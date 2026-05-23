@@ -2575,6 +2575,27 @@ class MainActivity : ComponentActivity() {
                                         }
                                     }
                                     Spacer(modifier = Modifier.height(8.dp))
+                                    androidx.compose.material3.OutlinedTextField(
+                                        value = searchQuery,
+                                        onValueChange = { searchQuery = it },
+                                        placeholder = { Text("Cari perangkat...", color = WarnaTeksDim) },
+                                        modifier = Modifier.fillMaxWidth(),
+                                        shape = RoundedCornerShape(12.dp),
+                                        singleLine = true,
+                                        leadingIcon = {
+                                            Text("🔍", fontSize = 16.sp)
+                                        },
+                                        trailingIcon = {
+                                            if (searchQuery.isNotEmpty()) {
+                                                Text(
+                                                    text = "✕",
+                                                    fontSize = 14.sp,
+                                                    color = WarnaTeksDim,
+                                                    modifier = Modifier.clickable { searchQuery = "" }
+                                                )
+                                            }
+                                        }
+                                    )
 
                                     if (devices.isEmpty()) {
                                         Box(
