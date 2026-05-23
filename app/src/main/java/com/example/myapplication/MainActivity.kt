@@ -67,6 +67,9 @@ import androidx.compose.material.pullrefresh.pullRefresh
 import androidx.compose.material.pullrefresh.rememberPullRefreshState
 import android.content.Context
 import android.content.SharedPreferences
+import androidx.compose.foundation.border
+import androidx.compose.foundation.layout.width
+import androidx.compose.ui.zIndex
 
 val WarnaHijau      = Color(0xFF22C55E)  // hijau modern
 val WarnaMerah      = Color(0xFFEF4444)  // merah modern
@@ -1568,6 +1571,7 @@ class MainActivity : ComponentActivity() {
                 var iotData by remember { mutableStateOf<Map<String, Any>>(emptyMap()) }
                 var selectedDevice by remember { mutableStateOf<Perangkat?>(null) }
                 var diagnosisJaringan by remember { mutableStateOf(listOf<DiagnosisResponse>()) }
+                var searchQuery by remember { mutableStateOf("") }
 
                 // Fungsi fetch dari server
                 suspend fun fetchDevices() {
@@ -2028,31 +2032,6 @@ class MainActivity : ComponentActivity() {
                                 mutableStateOf(AppPrefs.getIntervalScan(context) * 1000L)
                             }
 
-                            LaunchedEffect(Unit) {
-                                while (true) {
-                                    // Ambil interval terbaru dari settings
-                                    intervalScanMs = AppPrefs.getIntervalScan(context) * 1000L
-
-                                    fetchDevices()
-                                    try {
-                                        val data = withContext(Dispatchers.IO) {
-                                            RetrofitClient.instance.getIotStatus()
-                                        }
-                                        iotData = data
-                                    } catch (e: Exception) {
-                                        // ignore
-                                    }
-                                    try {
-                                        val diag = withContext(Dispatchers.IO) {
-                                            RetrofitClient.instance.getDiagnosis()
-                                        }
-                                        diagnosisJaringan = diag
-                                    } catch (e: Exception) {
-                                        // ignore
-                                    }
-                                    kotlinx.coroutines.delay(intervalScanMs)
-                                }
-                            }
                             if (showDialogTambah) {
                                 DialogTambahPerangkat(
                                     onDismiss = { showDialogTambah = false },
@@ -2575,6 +2554,49 @@ class MainActivity : ComponentActivity() {
                                         }
                                     }
                                     Spacer(modifier = Modifier.height(8.dp))
+                                    Box(
+                                        modifier = Modifier
+                                            .fillMaxWidth()
+                                            .height(48.dp)
+                                            .border(1.dp, WarnaBorder, RoundedCornerShape(12.dp))
+                                            .background(WarnaCard, RoundedCornerShape(12.dp)),
+                                        contentAlignment = Alignment.CenterStart
+                                    ) {
+                                        androidx.compose.foundation.text.BasicTextField(
+                                            value = searchQuery,
+                                            onValueChange = { searchQuery = it },
+                                            singleLine = true,
+                                            textStyle = androidx.compose.ui.text.TextStyle(
+                                                fontSize = 13.sp,
+                                                color = WarnaTeksUtama
+                                            ),
+                                            decorationBox = { innerTextField: @Composable () -> Unit ->
+                                                Row(
+                                                    modifier = Modifier
+                                                        .fillMaxSize()
+                                                        .padding(horizontal = 12.dp),
+                                                    verticalAlignment = Alignment.CenterVertically,
+                                                    horizontalArrangement = Arrangement.spacedBy(8.dp)
+                                                ) {
+                                                    Text("🔍", fontSize = 13.sp)
+                                                    Box(modifier = Modifier.weight(1f)) {
+                                                        if (searchQuery.isEmpty()) {
+                                                            Text("Cari perangkat...", fontSize = 13.sp, color = WarnaTeksDim)
+                                                        }
+                                                        innerTextField()
+                                                    }
+                                                    if (searchQuery.isNotEmpty()) {
+                                                        Text(
+                                                            text = "✕",
+                                                            fontSize = 13.sp,
+                                                            color = WarnaTeksDim,
+                                                            modifier = Modifier.clickable { searchQuery = "" }
+                                                        )
+                                                    }
+                                                }
+                                            }
+                                        )
+                                    }
 
                                     if (devices.isEmpty()) {
                                         Box(
@@ -2714,8 +2736,37 @@ class MainActivity : ComponentActivity() {
                                                     }
                                                 }
                                             }
+                                            val filteredDevices = if (searchQuery.isEmpty()) {
+                                                devices
+                                            } else {
+                                                devices.filter {
+                                                    it.nama.contains(searchQuery, ignoreCase = true) ||
+                                                            it.ip.contains(searchQuery, ignoreCase = true) ||
+                                                            it.kategori.contains(searchQuery, ignoreCase = true)
+                                                }
+                                            }
 
-                                            devices.forEach { perangkat ->
+                                            if (filteredDevices.isEmpty() && searchQuery.isNotEmpty()) {
+                                                Box(
+                                                    modifier = Modifier
+                                                        .fillMaxWidth()
+                                                        .padding(32.dp),
+                                                    contentAlignment = Alignment.Center
+                                                ) {
+                                                    Column(horizontalAlignment = Alignment.CenterHorizontally) {
+                                                        Text(text = "🔍", fontSize = 32.sp)
+                                                        Spacer(modifier = Modifier.height(8.dp))
+                                                        Text(
+                                                            text = "Tidak ada perangkat\nyang cocok dengan \"$searchQuery\"",
+                                                            fontSize = 14.sp,
+                                                            color = WarnaTeksDim,
+                                                            textAlign = TextAlign.Center
+                                                        )
+                                                    }
+                                                }
+                                            }
+
+                                            filteredDevices.forEach { perangkat ->
                                                 Card(
                                                     modifier = Modifier
                                                         .fillMaxWidth()
@@ -2833,7 +2884,26 @@ class MainActivity : ComponentActivity() {
                                     .padding(paddingValues)
                                     .padding(horizontal = 16.dp)
                             ) {
+
+                                var filterDevice by remember { mutableStateOf("Semua") }
+                                var filterTanggal by remember { mutableStateOf("Semua") }
+                                var showFilterDevice by remember { mutableStateOf(false) }
+                                var showFilterTanggal by remember { mutableStateOf(false) }
                                 var showDialogHapusHistory by remember { mutableStateOf(false) }
+                                var searchHistory by remember { mutableStateOf("") } // ← TAMBAH INI
+
+                                // Daftar device unik dari log
+                                val daftarDevice = listOf("Semua") + logAktivitas.map { it.perangkat }.distinct().sorted()
+
+                                // Daftar tanggal unik dari log
+                                val daftarTanggal = listOf("Semua") + logAktivitas.map { it.tanggal }.distinct().sortedDescending()
+
+                                val filteredLog = logAktivitas.filter { log ->
+                                    (filterDevice == "Semua" || log.perangkat == filterDevice) &&
+                                            (filterTanggal == "Semua" || log.tanggal == filterTanggal) &&
+                                            (searchHistory.isEmpty() || log.perangkat.contains(searchHistory, ignoreCase = true) ||
+                                                    log.pesan.contains(searchHistory, ignoreCase = true))
+                                }
 
                                 if (showDialogHapusHistory) {
                                     androidx.compose.ui.window.Dialog(
@@ -2865,22 +2935,12 @@ class MainActivity : ComponentActivity() {
                                                     Box(
                                                         modifier = Modifier
                                                             .weight(1f)
-                                                            .clickable {
-                                                                showDialogHapusHistory = false
-                                                            }
-                                                            .background(
-                                                                WarnaBg,
-                                                                RoundedCornerShape(12.dp)
-                                                            )
+                                                            .clickable { showDialogHapusHistory = false }
+                                                            .background(WarnaBg, RoundedCornerShape(12.dp))
                                                             .padding(vertical = 12.dp),
                                                         contentAlignment = Alignment.Center
                                                     ) {
-                                                        Text(
-                                                            text = "Batal",
-                                                            fontSize = 14.sp,
-                                                            color = WarnaTeksDim,
-                                                            fontWeight = FontWeight.Bold
-                                                        )
+                                                        Text("Batal", fontSize = 14.sp, color = WarnaTeksDim, fontWeight = FontWeight.Bold)
                                                     }
                                                     Box(
                                                         modifier = Modifier
@@ -2892,37 +2952,21 @@ class MainActivity : ComponentActivity() {
                                                                         RetrofitClient.instance.hapusSemuaLog(username)
                                                                         fetchDevices()
                                                                         withContext(Dispatchers.Main) {
-                                                                            Toast.makeText(
-                                                                                this@MainActivity,
-                                                                                "✅ History berhasil dihapus",
-                                                                                Toast.LENGTH_SHORT
-                                                                            ).show()
+                                                                            Toast.makeText(this@MainActivity, "✅ History berhasil dihapus", Toast.LENGTH_SHORT).show()
                                                                         }
                                                                     } catch (e: Exception) {
                                                                         withContext(Dispatchers.Main) {
-                                                                            Toast.makeText(
-                                                                                this@MainActivity,
-                                                                                "❌ Gagal hapus history",
-                                                                                Toast.LENGTH_SHORT
-                                                                            ).show()
+                                                                            Toast.makeText(this@MainActivity, "❌ Gagal hapus history", Toast.LENGTH_SHORT).show()
                                                                         }
                                                                     }
                                                                 }
                                                                 showDialogHapusHistory = false
                                                             }
-                                                            .background(
-                                                                WarnaMerah,
-                                                                RoundedCornerShape(12.dp)
-                                                            )
+                                                            .background(WarnaMerah, RoundedCornerShape(12.dp))
                                                             .padding(vertical = 12.dp),
                                                         contentAlignment = Alignment.Center
                                                     ) {
-                                                        Text(
-                                                            text = "Hapus Semua",
-                                                            fontSize = 14.sp,
-                                                            color = Color.White,
-                                                            fontWeight = FontWeight.Bold
-                                                        )
+                                                        Text("Hapus Semua", fontSize = 14.sp, color = Color.White, fontWeight = FontWeight.Bold)
                                                     }
                                                 }
                                             }
@@ -2930,6 +2974,123 @@ class MainActivity : ComponentActivity() {
                                     }
                                 }
 
+                                // Dialog Filter Device
+                                if (showFilterDevice) {
+                                    androidx.compose.ui.window.Dialog(onDismissRequest = { showFilterDevice = false }) {
+                                        Card(
+                                            shape = RoundedCornerShape(16.dp),
+                                            colors = CardDefaults.cardColors(containerColor = WarnaCard),
+                                            elevation = CardDefaults.cardElevation(8.dp)
+                                        ) {
+                                            Column(
+                                                modifier = Modifier
+                                                    .padding(20.dp)
+                                                    .verticalScroll(rememberScrollState())
+                                            ) {
+                                                Text("Filter Device", fontSize = 16.sp, fontWeight = FontWeight.Bold, color = WarnaTeksUtama)
+                                                Spacer(modifier = Modifier.height(12.dp))
+                                                daftarDevice.forEach { device ->
+                                                    val dipilih = filterDevice == device
+                                                    Box(
+                                                        modifier = Modifier
+                                                            .fillMaxWidth()
+                                                            .clickable {
+                                                                filterDevice = device
+                                                                showFilterDevice = false
+                                                            }
+                                                            .background(
+                                                                if (dipilih) Color(0xFF2563EB).copy(alpha = 0.1f) else Color.Transparent,
+                                                                RoundedCornerShape(8.dp)
+                                                            )
+                                                            .padding(horizontal = 12.dp, vertical = 10.dp)
+                                                    ) {
+                                                        Row(
+                                                            modifier = Modifier.fillMaxWidth(),
+                                                            horizontalArrangement = Arrangement.SpaceBetween,
+                                                            verticalAlignment = Alignment.CenterVertically
+                                                        ) {
+                                                            Text(
+                                                                text = device,
+                                                                fontSize = 14.sp,
+                                                                color = if (dipilih) Color(0xFF2563EB) else WarnaTeksUtama,
+                                                                fontWeight = if (dipilih) FontWeight.Bold else FontWeight.Normal
+                                                            )
+                                                            if (dipilih) Text("✓", fontSize = 14.sp, color = Color(0xFF2563EB))
+                                                        }
+                                                    }
+                                                    if (device != daftarDevice.last()) HorizontalDivider(color = WarnaBorder)
+                                                }
+                                            }
+                                        }
+                                    }
+                                }
+
+                                // Dialog Filter Tanggal
+                                if (showFilterTanggal) {
+                                    androidx.compose.ui.window.Dialog(onDismissRequest = { showFilterTanggal = false }) {
+                                        Card(
+                                            shape = RoundedCornerShape(16.dp),
+                                            colors = CardDefaults.cardColors(containerColor = WarnaCard),
+                                            elevation = CardDefaults.cardElevation(8.dp)
+                                        ) {
+                                            Column(
+                                                modifier = Modifier
+                                                    .padding(20.dp)
+                                                    .verticalScroll(rememberScrollState())
+                                            ) {
+                                                Text("Filter Tanggal", fontSize = 16.sp, fontWeight = FontWeight.Bold, color = WarnaTeksUtama)
+                                                Spacer(modifier = Modifier.height(12.dp))
+                                                val today = getCurrentDate()
+                                                val calendar = java.util.Calendar.getInstance()
+                                                calendar.add(java.util.Calendar.DAY_OF_MONTH, -1)
+                                                val yesterday = "%02d/%02d/%04d".format(
+                                                    calendar.get(java.util.Calendar.DAY_OF_MONTH),
+                                                    calendar.get(java.util.Calendar.MONTH) + 1,
+                                                    calendar.get(java.util.Calendar.YEAR)
+                                                )
+                                                daftarTanggal.forEach { tanggal ->
+                                                    val dipilih = filterTanggal == tanggal
+                                                    val label = when (tanggal) {
+                                                        "Semua" -> "Semua"
+                                                        today -> "Hari Ini ($tanggal)"
+                                                        yesterday -> "Kemarin ($tanggal)"
+                                                        else -> tanggal
+                                                    }
+                                                    Box(
+                                                        modifier = Modifier
+                                                            .fillMaxWidth()
+                                                            .clickable {
+                                                                filterTanggal = tanggal
+                                                                showFilterTanggal = false
+                                                            }
+                                                            .background(
+                                                                if (dipilih) Color(0xFF2563EB).copy(alpha = 0.1f) else Color.Transparent,
+                                                                RoundedCornerShape(8.dp)
+                                                            )
+                                                            .padding(horizontal = 12.dp, vertical = 10.dp)
+                                                    ) {
+                                                        Row(
+                                                            modifier = Modifier.fillMaxWidth(),
+                                                            horizontalArrangement = Arrangement.SpaceBetween,
+                                                            verticalAlignment = Alignment.CenterVertically
+                                                        ) {
+                                                            Text(
+                                                                text = label,
+                                                                fontSize = 14.sp,
+                                                                color = if (dipilih) Color(0xFF2563EB) else WarnaTeksUtama,
+                                                                fontWeight = if (dipilih) FontWeight.Bold else FontWeight.Normal
+                                                            )
+                                                            if (dipilih) Text("✓", fontSize = 14.sp, color = Color(0xFF2563EB))
+                                                        }
+                                                    }
+                                                    if (tanggal != daftarTanggal.last()) HorizontalDivider(color = WarnaBorder)
+                                                }
+                                            }
+                                        }
+                                    }
+                                }
+
+                                // Header
                                 Row(
                                     modifier = Modifier
                                         .fillMaxWidth()
@@ -2937,41 +3098,238 @@ class MainActivity : ComponentActivity() {
                                     horizontalArrangement = Arrangement.SpaceBetween,
                                     verticalAlignment = Alignment.CenterVertically
                                 ) {
-                                    Text(
-                                        text = "History",
-                                        color = WarnaTeksUtama,
-                                        fontSize = 20.sp,
-                                        fontWeight = FontWeight.Bold
-                                    )
+                                    Text("History", color = WarnaTeksUtama, fontSize = 20.sp, fontWeight = FontWeight.Bold)
                                     Box(
                                         modifier = Modifier
                                             .clickable { showDialogHapusHistory = true }
-                                            .background(
-                                                WarnaMerah.copy(alpha = 0.1f),
-                                                RoundedCornerShape(8.dp)
-                                            )
+                                            .background(WarnaMerah.copy(alpha = 0.1f), RoundedCornerShape(8.dp))
                                             .padding(horizontal = 12.dp, vertical = 6.dp)
                                     ) {
-                                        Text(
-                                            text = "🗑️ Hapus Semua",
-                                            fontSize = 12.sp,
-                                            color = WarnaMerah,
-                                            fontWeight = FontWeight.Bold
-                                        )
+                                        Text("🗑️ Hapus Semua", fontSize = 12.sp, color = WarnaMerah, fontWeight = FontWeight.Bold)
                                     }
                                 }
-                                Spacer(modifier = Modifier.height(8.dp))
-                                if (logAktivitas.isEmpty()) {
-                                    Box(
-                                        modifier = Modifier.fillMaxSize(),
-                                        contentAlignment = Alignment.Center
+
+// ── Search + Filter ──
+                                var showFilterDropdown by remember { mutableStateOf(false) }
+
+                                Box(
+                                    modifier = Modifier
+                                        .fillMaxWidth()
+                                        .zIndex(1f)
+                                ) {
+                                    Row(
+                                        modifier = Modifier.fillMaxWidth(),
+                                        horizontalArrangement = Arrangement.spacedBy(8.dp),
+                                        verticalAlignment = Alignment.CenterVertically
                                     ) {
+                                        // Search bar
+                                        Box(
+                                            modifier = Modifier
+                                                .weight(1f)
+                                                .height(48.dp)
+                                                .border(1.dp, WarnaBorder, RoundedCornerShape(12.dp))
+                                                .background(WarnaCard, RoundedCornerShape(12.dp)),
+                                            contentAlignment = Alignment.CenterStart
+                                        ) {
+                                            androidx.compose.foundation.text.BasicTextField(
+                                                value = searchHistory,
+                                                onValueChange = { searchHistory = it },
+                                                singleLine = true,
+                                                textStyle = androidx.compose.ui.text.TextStyle(
+                                                    fontSize = 13.sp,
+                                                    color = WarnaTeksUtama
+                                                ),
+                                                decorationBox = { innerTextField: @Composable () -> Unit ->
+                                                    Row(
+                                                        modifier = Modifier
+                                                            .fillMaxSize()
+                                                            .padding(horizontal = 12.dp),
+                                                        verticalAlignment = Alignment.CenterVertically,
+                                                        horizontalArrangement = Arrangement.spacedBy(8.dp)
+                                                    ) {
+                                                        Text("🔍", fontSize = 13.sp)
+                                                        Box(modifier = Modifier.weight(1f)) {
+                                                            if (searchHistory.isEmpty()) {
+                                                                Text("Cari aktivitas...", fontSize = 13.sp, color = WarnaTeksDim)
+                                                            }
+                                                            innerTextField()
+                                                        }
+                                                        if (searchHistory.isNotEmpty()) {
+                                                            Text(
+                                                                text = "✕",
+                                                                fontSize = 13.sp,
+                                                                color = WarnaTeksDim,
+                                                                modifier = Modifier.clickable { searchHistory = "" }
+                                                            )
+                                                        }
+                                                    }
+                                                }
+                                            )
+                                        }
+
+                                        // Tombol filter kecil
+                                        Box(
+                                            modifier = Modifier
+                                                .size(44.dp)
+                                                .background(
+                                                    if (filterDevice != "Semua" || filterTanggal != "Semua")
+                                                        Color(0xFF2563EB) else WarnaCard,
+                                                    RoundedCornerShape(12.dp)
+                                                )
+                                                .border(
+                                                    1.dp,
+                                                    if (filterDevice != "Semua" || filterTanggal != "Semua")
+                                                        Color(0xFF2563EB) else WarnaBorder,
+                                                    RoundedCornerShape(12.dp)
+                                                )
+                                                .clickable { showFilterDropdown = !showFilterDropdown },
+                                            contentAlignment = Alignment.Center
+                                        ) {
+                                            Text(
+                                                text = "⚙️",
+                                                fontSize = 18.sp
+                                            )
+                                        }
+                                    }
+
+// Dropdown filter
+                                    if (showFilterDropdown) {
+                                        androidx.compose.ui.window.Popup(
+                                            alignment = Alignment.TopEnd,
+                                            offset = androidx.compose.ui.unit.IntOffset(0, 130)
+                                        ) {
+                                        Card(
+                                            modifier = Modifier.width(220.dp),
+                                            shape = RoundedCornerShape(12.dp),
+                                            elevation = CardDefaults.cardElevation(8.dp),
+                                            colors = CardDefaults.cardColors(containerColor = WarnaCard)
+                                        ) {
+                                            Column(modifier = Modifier.padding(12.dp)) {
+                                                Text("Filter", fontSize = 13.sp, fontWeight = FontWeight.Bold, color = WarnaTeksUtama)
+                                                Spacer(modifier = Modifier.height(8.dp))
+
+                                                // Filter Device
+                                                Text("Device", fontSize = 11.sp, color = WarnaTeksDim)
+                                                Spacer(modifier = Modifier.height(4.dp))
+                                                androidx.compose.foundation.lazy.LazyRow(
+                                                    horizontalArrangement = Arrangement.spacedBy(6.dp)
+                                                ) {
+                                                    items(daftarDevice.size) { i ->
+                                                        val d = daftarDevice[i]
+                                                        val dipilih = filterDevice == d
+                                                        Box(
+                                                            modifier = Modifier
+                                                                .clickable { filterDevice = d }
+                                                                .background(
+                                                                    if (dipilih) Color(0xFF2563EB) else WarnaBg,
+                                                                    RoundedCornerShape(20.dp)
+                                                                )
+                                                                .padding(horizontal = 10.dp, vertical = 5.dp)
+                                                        ) {
+                                                            Text(
+                                                                text = d,
+                                                                fontSize = 11.sp,
+                                                                color = if (dipilih) Color.White else WarnaTeksDim,
+                                                                fontWeight = if (dipilih) FontWeight.Bold else FontWeight.Normal
+                                                            )
+                                                        }
+                                                    }
+                                                }
+
+                                                Spacer(modifier = Modifier.height(10.dp))
+
+                                                // Filter Tanggal
+                                                Text("Tanggal", fontSize = 11.sp, color = WarnaTeksDim)
+                                                Spacer(modifier = Modifier.height(4.dp))
+                                                androidx.compose.foundation.lazy.LazyRow(
+                                                    horizontalArrangement = Arrangement.spacedBy(6.dp)
+                                                ) {
+                                                    items(daftarTanggal.size) { i ->
+                                                        val t = daftarTanggal[i]
+                                                        val dipilih = filterTanggal == t
+                                                        val today = getCurrentDate()
+                                                        val label = when (t) {
+                                                            "Semua" -> "Semua"
+                                                            today -> "Hari Ini"
+                                                            else -> t
+                                                        }
+                                                        Box(
+                                                            modifier = Modifier
+                                                                .clickable { filterTanggal = t }
+                                                                .background(
+                                                                    if (dipilih) Color(0xFF2563EB) else WarnaBg,
+                                                                    RoundedCornerShape(20.dp)
+                                                                )
+                                                                .padding(horizontal = 10.dp, vertical = 5.dp)
+                                                        ) {
+                                                            Text(
+                                                                text = label,
+                                                                fontSize = 11.sp,
+                                                                color = if (dipilih) Color.White else WarnaTeksDim,
+                                                                fontWeight = if (dipilih) FontWeight.Bold else FontWeight.Normal
+                                                            )
+                                                        }
+                                                    }
+                                                }
+
+                                                // Reset filter
+                                                if (filterDevice != "Semua" || filterTanggal != "Semua") {
+                                                    Spacer(modifier = Modifier.height(10.dp))
+                                                    HorizontalDivider(color = WarnaBorder)
+                                                    Spacer(modifier = Modifier.height(8.dp))
+                                                    Box(
+                                                        modifier = Modifier
+                                                            .fillMaxWidth()
+                                                            .clickable {
+                                                                filterDevice = "Semua"
+                                                                filterTanggal = "Semua"
+                                                            }
+                                                            .background(WarnaMerah.copy(alpha = 0.1f), RoundedCornerShape(8.dp))
+                                                            .padding(vertical = 6.dp),
+                                                        contentAlignment = Alignment.Center
+                                                    ) {
+                                                        Text("Reset Filter", fontSize = 12.sp, color = WarnaMerah, fontWeight = FontWeight.Bold)
+                                                    }
+                                                }
+                                            }
+                                        }
+                                            }
+                                    }
+                                }
+
+                                Spacer(modifier = Modifier.height(8.dp))
+
+                                // Info jumlah hasil filter
+                                if (filterDevice != "Semua" || filterTanggal != "Semua") {
+                                    Text(
+                                        text = "Menampilkan ${filteredLog.size} aktivitas",
+                                        fontSize = 12.sp,
+                                        color = WarnaTeksDim,
+                                        modifier = Modifier.padding(bottom = 4.dp)
+                                    )
+                                }
+
+                                if (logAktivitas.isEmpty()) {
+                                    Box(modifier = Modifier.fillMaxSize(), contentAlignment = Alignment.Center) {
                                         Text(
                                             text = "Belum ada history.\nTekan 'Cek Semua Jaringan' dulu.",
                                             fontSize = 14.sp,
                                             color = WarnaTeksDim,
                                             textAlign = TextAlign.Center
                                         )
+                                    }
+                                } else if (filteredLog.isEmpty()) {
+                                    Box(modifier = Modifier.fillMaxSize(), contentAlignment = Alignment.Center) {
+                                        Column(horizontalAlignment = Alignment.CenterHorizontally) {
+                                            Text("🔍", fontSize = 32.sp)
+                                            Spacer(modifier = Modifier.height(8.dp))
+                                            Text(
+                                                text = "Tidak ada history\nsesuai filter yang dipilih",
+                                                fontSize = 14.sp,
+                                                color = WarnaTeksDim,
+                                                textAlign = TextAlign.Center
+                                            )
+                                        }
                                     }
                                 } else {
                                     val today = getCurrentDate()
@@ -2982,12 +3340,8 @@ class MainActivity : ComponentActivity() {
                                         calendar.get(java.util.Calendar.MONTH) + 1,
                                         calendar.get(java.util.Calendar.YEAR)
                                     )
-                                    val groupedLog = logAktivitas.groupBy { it.tanggal }
-                                    Column(
-                                        modifier = Modifier
-                                            .weight(1f)
-                                            .verticalScroll(rememberScrollState())
-                                    ) {
+                                    val groupedLog = filteredLog.groupBy { it.tanggal }
+                                    Column(modifier = Modifier.weight(1f).verticalScroll(rememberScrollState())) {
                                         groupedLog.forEach { (tanggal, logs) ->
                                             val labelTanggal = when (tanggal) {
                                                 today -> "Hari Ini"
@@ -3011,9 +3365,7 @@ class MainActivity : ComponentActivity() {
                                                 Column(modifier = Modifier.padding(12.dp)) {
                                                     logs.forEachIndexed { index, log ->
                                                         AktivitasItem(log = log)
-                                                        if (index < logs.size - 1) {
-                                                            HorizontalDivider(color = WarnaBorder)
-                                                        }
+                                                        if (index < logs.size - 1) HorizontalDivider(color = WarnaBorder)
                                                     }
                                                 }
                                             }
