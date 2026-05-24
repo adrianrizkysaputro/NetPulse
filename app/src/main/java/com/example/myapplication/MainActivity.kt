@@ -70,6 +70,11 @@ import android.content.SharedPreferences
 import androidx.compose.foundation.border
 import androidx.compose.foundation.layout.width
 import androidx.compose.ui.zIndex
+import android.Manifest
+import android.content.pm.PackageManager
+import androidx.core.app.ActivityCompat
+import androidx.core.content.ContextCompat
+import android.os.Build
 
 val WarnaHijau      = Color(0xFF22C55E)  // hijau modern
 val WarnaMerah      = Color(0xFFEF4444)  // merah modern
@@ -1552,11 +1557,48 @@ class MainActivity : ComponentActivity() {
     @OptIn(ExperimentalMaterialApi::class)
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
+
+        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.TIRAMISU) {
+            if (ContextCompat.checkSelfPermission(
+                    this,
+                    Manifest.permission.POST_NOTIFICATIONS
+                ) != PackageManager.PERMISSION_GRANTED
+            ) {
+                ActivityCompat.requestPermissions(
+                    this,
+                    arrayOf(Manifest.permission.POST_NOTIFICATIONS),
+                    100
+                )
+            }
+        }
         setContent {
             val context = androidx.compose.ui.platform.LocalContext.current
             var isLoggedIn by remember { mutableStateOf(AppPrefs.isLoggedIn(context)) }
+            var fcmToken by remember { mutableStateOf("") }
             LaunchedEffect(Unit) {
                 RetrofitClient.BASE_URL = AppPrefs.getServerUrl(context)
+
+                com.google.firebase.messaging.FirebaseMessaging.getInstance().token
+                    .addOnSuccessListener { token ->
+                        fcmToken = token  // ← simpan ke state agar bisa ditampilkan
+                        android.util.Log.d("FCM_TOKEN", "Token: $token")  // ← log di Logcat
+                        lifecycleScope.launch(Dispatchers.IO) {
+                            try {
+                                val username = AppPrefs.getActiveUsername(context)
+                                RetrofitClient.instance.registerFcmToken(  // ← nama yang benar
+                                    FcmTokenRequest(token = token, platform = "android"),
+                                    username
+                                )
+                                android.util.Log.d("FCM_TOKEN", "Token berhasil dikirim ke server")
+                            } catch (e: Exception) {
+                                android.util.Log.e("FCM_TOKEN", "Gagal kirim token: ${e.message}")
+                                e.printStackTrace()
+                            }
+                        }
+                    }
+
+                com.google.firebase.messaging.FirebaseMessaging.getInstance()
+                    .subscribeToTopic("netpulse")
             }
             if (!isLoggedIn) {
                 HalamanLogin(onLoginBerhasil = { isLoggedIn = true })
@@ -1714,7 +1756,7 @@ class MainActivity : ComponentActivity() {
                             fetchDevices()
                             try {
                                 val data = withContext(Dispatchers.IO) {
-                                    RetrofitClient.instance.getIotStatus()
+                                    RetrofitClient.instance.getIotStatus(selectedDevice?.ip ?: "")
                                 }
                                 iotData = data
                             } catch (e: Exception) {
@@ -2027,6 +2069,19 @@ class MainActivity : ComponentActivity() {
                             var showDialogTambah by remember { mutableStateOf(false) }
                             var selectedDevice by remember { mutableStateOf<Perangkat?>(null) }
                             var iotData by remember { mutableStateOf<Map<String, Any>>(emptyMap()) }
+                            LaunchedEffect(selectedDevice) {         // ← tambah ini
+                                if (selectedDevice?.kategori == "IoT") {
+                                    while (true) {
+                                        try {
+                                            val data = withContext(Dispatchers.IO) {
+                                                RetrofitClient.instance.getIotStatus(selectedDevice?.ip ?: "")
+                                            }
+                                            iotData = data
+                                        } catch (e: Exception) { }
+                                        kotlinx.coroutines.delay(5000)
+                                    }
+                                }
+                            }
                             val context = androidx.compose.ui.platform.LocalContext.current
                             var intervalScanMs by remember {
                                 mutableStateOf(AppPrefs.getIntervalScan(context) * 1000L)
@@ -3311,12 +3366,45 @@ class MainActivity : ComponentActivity() {
 
                                 if (logAktivitas.isEmpty()) {
                                     Box(modifier = Modifier.fillMaxSize(), contentAlignment = Alignment.Center) {
-                                        Text(
-                                            text = "Belum ada history.\nTekan 'Cek Semua Jaringan' dulu.",
-                                            fontSize = 14.sp,
-                                            color = WarnaTeksDim,
-                                            textAlign = TextAlign.Center
-                                        )
+                                        Column(
+                                            horizontalAlignment = Alignment.CenterHorizontally,
+                                            verticalArrangement = Arrangement.spacedBy(8.dp),
+                                            modifier = Modifier.padding(32.dp)
+                                        ) {
+                                            Text(text = "📋", fontSize = 64.sp)
+                                            Spacer(modifier = Modifier.height(8.dp))
+                                            Text(
+                                                text = "Belum Ada Riwayat",
+                                                fontSize = 18.sp,
+                                                fontWeight = FontWeight.Bold,
+                                                color = WarnaTeksUtama
+                                            )
+                                            Text(
+                                                text = "Riwayat aktivitas jaringan kamu\nakan muncul di sini",
+                                                fontSize = 14.sp,
+                                                color = WarnaTeksDim,
+                                                textAlign = TextAlign.Center
+                                            )
+                                            Spacer(modifier = Modifier.height(8.dp))
+                                            Box(
+                                                modifier = Modifier
+                                                    .background(Color(0xFF2563EB).copy(alpha = 0.1f), RoundedCornerShape(12.dp))
+                                                    .padding(horizontal = 16.dp, vertical = 10.dp)
+                                            ) {
+                                                Row(
+                                                    verticalAlignment = Alignment.CenterVertically,
+                                                    horizontalArrangement = Arrangement.spacedBy(6.dp)
+                                                ) {
+                                                    Text(text = "💡", fontSize = 14.sp)
+                                                    Text(
+                                                        text = "Tekan 'Cek Semua Jaringan'\ndi tab Dashboard",
+                                                        fontSize = 13.sp,
+                                                        color = Color(0xFF2563EB),
+                                                        fontWeight = FontWeight.Bold
+                                                    )
+                                                }
+                                            }
+                                        }
                                     }
                                 } else if (filteredLog.isEmpty()) {
                                     Box(modifier = Modifier.fillMaxSize(), contentAlignment = Alignment.Center) {
@@ -3781,6 +3869,118 @@ class MainActivity : ComponentActivity() {
                                     }
                                 }
 
+                                Spacer(modifier = Modifier.height(16.dp))
+
+                                // ── FCM Token ──
+                                Text(
+                                    text = "Notifikasi",
+                                    fontSize = 16.sp,
+                                    fontWeight = FontWeight.Bold,
+                                    color = WarnaTeksUtama
+                                )
+                                Spacer(modifier = Modifier.height(8.dp))
+                                Card(
+                                    modifier = Modifier.fillMaxWidth(),
+                                    shape = RoundedCornerShape(16.dp),
+                                    elevation = CardDefaults.cardElevation(2.dp),
+                                    colors = CardDefaults.cardColors(containerColor = WarnaCard)
+                                ) {
+                                    Column(modifier = Modifier.padding(16.dp)) {
+                                        Text(
+                                            text = "Firebase Token (FCM)",
+                                            fontSize = 13.sp,
+                                            color = WarnaTeksDim
+                                        )
+                                        Spacer(modifier = Modifier.height(8.dp))
+
+                                        if (fcmToken.isEmpty()) {
+                                            Row(
+                                                verticalAlignment = Alignment.CenterVertically,
+                                                horizontalArrangement = Arrangement.spacedBy(8.dp)
+                                            ) {
+                                                androidx.compose.material3.CircularProgressIndicator(
+                                                    modifier = Modifier.size(14.dp),
+                                                    strokeWidth = 2.dp,
+                                                    color = Color(0xFF2563EB)
+                                                )
+                                                Text(
+                                                    text = "Mengambil token...",
+                                                    fontSize = 12.sp,
+                                                    color = WarnaTeksDim
+                                                )
+                                            }
+                                        } else {
+                                            // Tampil token dengan background abu
+                                            Box(
+                                                modifier = Modifier
+                                                    .fillMaxWidth()
+                                                    .background(WarnaBg, RoundedCornerShape(8.dp))
+                                                    .padding(10.dp)
+                                            ) {
+                                                Text(
+                                                    text = fcmToken,
+                                                    fontSize = 11.sp,
+                                                    color = WarnaTeksUtama,
+                                                    lineHeight = 16.sp
+                                                )
+                                            }
+                                            Spacer(modifier = Modifier.height(8.dp))
+                                            Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                                                // Tombol Copy
+                                                Box(
+                                                    modifier = Modifier
+                                                        .weight(1f)
+                                                        .clickable {
+                                                            val clipboard = context.getSystemService(
+                                                                android.content.Context.CLIPBOARD_SERVICE
+                                                            ) as android.content.ClipboardManager
+                                                            val clip = android.content.ClipData.newPlainText("FCM Token", fcmToken)
+                                                            clipboard.setPrimaryClip(clip)
+                                                            Toast.makeText(context, "✅ Token disalin!", Toast.LENGTH_SHORT).show()
+                                                        }
+                                                        .background(Color(0xFF2563EB), RoundedCornerShape(12.dp))
+                                                        .padding(vertical = 10.dp),
+                                                    contentAlignment = Alignment.Center
+                                                ) {
+                                                    Text("📋 Salin Token", fontSize = 13.sp, color = Color.White, fontWeight = FontWeight.Bold)
+                                                }
+                                                // Tombol Test Notif
+                                                Box(
+                                                    modifier = Modifier
+                                                        .weight(1f)
+                                                        .clickable {
+                                                            kotlinx.coroutines.GlobalScope.launch {
+                                                                try {
+                                                                    val username = AppPrefs.getActiveUsername(context)
+                                                                    val result = RetrofitClient.instance.testNotifikasi(username)
+                                                                    withContext(Dispatchers.Main) {
+                                                                        Toast.makeText(
+                                                                            context,
+                                                                            "✅ Test notif terkirim!",
+                                                                            Toast.LENGTH_SHORT
+                                                                        ).show()
+                                                                    }
+                                                                } catch (e: Exception) {
+                                                                    withContext(Dispatchers.Main) {
+                                                                        Toast.makeText(
+                                                                            context,
+                                                                            "❌ Gagal: ${e.message}",
+                                                                            Toast.LENGTH_SHORT
+                                                                        ).show()
+                                                                    }
+                                                                }
+                                                            }
+                                                        }
+                                                        .background(WarnaHijau, RoundedCornerShape(12.dp))
+                                                        .padding(vertical = 10.dp),
+                                                    contentAlignment = Alignment.Center
+                                                ) {
+                                                    Text("🔔 Test Notif", fontSize = 13.sp, color = Color.White, fontWeight = FontWeight.Bold)
+                                                }
+                                            }
+                                        }
+                                    }
+                                }
                                 Spacer(modifier = Modifier.height(16.dp))
 
                                 // ── Informasi App ──
