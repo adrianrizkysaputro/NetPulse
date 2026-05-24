@@ -6,6 +6,21 @@ import ipaddress
 import uvicorn
 import sqlite3
 
+# ─────────────────────────────────────────
+# FIREBASE FCM INIT
+# ─────────────────────────────────────────
+try:
+    import firebase_admin
+    from firebase_admin import credentials, messaging
+
+    cred = credentials.Certificate("firebase-key.json")
+    firebase_admin.initialize_app(cred)
+    FCM_ENABLED = True
+    print("[FCM] Firebase berhasil diinisialisasi")
+except Exception as e:
+    FCM_ENABLED = False
+    print(f"[FCM] Firebase tidak aktif: {e}")
+
 app = FastAPI()
 
 app.add_middleware(
@@ -18,8 +33,29 @@ app.add_middleware(
 DB_PATH = "monitor.db"
 status_terakhir = {}
 internet_terakhir = None
-iot_data = {}
-iot_last_seen = {}
+iot_data = {}       # { "192.168.1.11": {...data...}, "192.168.1.12": {...data...} }
+iot_last_seen = {}  # { "192.168.1.11": datetime, "192.168.1.12": datetime }
+
+# ─────────────────────────────────────────
+# COOLDOWN NOTIFIKASI (anti-spam)
+# ─────────────────────────────────────────
+notif_cooldown: dict = {}
+COOLDOWN_MENIT = 10  # notif yang sama tidak akan muncul lagi dalam 10 menit
+
+def boleh_kirim_notif(key: str) -> bool:
+    """Cek apakah notif dengan key ini boleh dikirim (cooldown check)."""
+    waktu_terakhir = notif_cooldown.get(key)
+    if waktu_terakhir is None:
+        notif_cooldown[key] = datetime.now()
+        return True
+    if datetime.now() - waktu_terakhir > timedelta(minutes=COOLDOWN_MENIT):
+        notif_cooldown[key] = datetime.now()
+        return True
+    return False
+
+def reset_cooldown(key: str):
+    """Reset cooldown saat status berubah (misal OFFLINE → ONLINE)."""
+    notif_cooldown.pop(key, None)
 
 
 # ─────────────────────────────────────────
@@ -68,6 +104,116 @@ def init_db():
 init_db()
 
 
+# ─────────────────────────────────────────
+# DATABASE: FCM TOKEN
+# ─────────────────────────────────────────
+def init_fcm_table():
+    conn = sqlite3.connect(DB_PATH)
+    c = conn.cursor()
+    c.execute('''CREATE TABLE IF NOT EXISTS fcm_tokens
+                 (id INTEGER PRIMARY KEY AUTOINCREMENT,
+                  username TEXT NOT NULL,
+                  token TEXT NOT NULL,
+                  platform TEXT DEFAULT 'web',
+                  updated_at TEXT,
+                  UNIQUE(username, token))''')
+    conn.commit()
+    conn.close()
+
+init_fcm_table()
+
+
+def simpan_fcm_token(username: str, token: str, platform: str = "web"):
+    conn = sqlite3.connect(DB_PATH)
+    c = conn.cursor()
+    c.execute("""INSERT INTO fcm_tokens (username, token, platform, updated_at)
+                 VALUES (?, ?, ?, ?)
+                 ON CONFLICT(username, token) DO UPDATE SET updated_at=excluded.updated_at""",
+              (username, token, platform, datetime.now().isoformat()))
+    conn.commit()
+    conn.close()
+
+
+def hapus_fcm_token(username: str, token: str):
+    conn = sqlite3.connect(DB_PATH)
+    c = conn.cursor()
+    c.execute("DELETE FROM fcm_tokens WHERE username=? AND token=?", (username, token))
+    conn.commit()
+    conn.close()
+
+
+def get_fcm_tokens(username: str) -> list:
+    conn = sqlite3.connect(DB_PATH)
+    c = conn.cursor()
+    c.execute("SELECT token FROM fcm_tokens WHERE username=?", (username,))
+    rows = c.fetchall()
+    conn.close()
+    return [r[0] for r in rows]
+
+
+# ─────────────────────────────────────────
+# FCM: Kirim Notifikasi
+# ─────────────────────────────────────────
+def kirim_notif(username: str, judul: str, isi: str, data: dict = None):
+    """Kirim push notification ke semua device milik username."""
+    if not FCM_ENABLED:
+        return
+
+    tokens = get_fcm_tokens(username)
+    if not tokens:
+        return
+
+    notif_data = {k: str(v) for k, v in (data or {}).items()}
+
+    gagal = []
+    for token in tokens:
+        try:
+            msg = messaging.Message(
+                notification=messaging.Notification(title=judul, body=isi),
+                data=notif_data,
+                token=token,
+                android=messaging.AndroidConfig(
+                    priority="high",
+                    notification=messaging.AndroidNotification(
+                        sound="default",
+                        channel_id="monitor_alerts"
+                    )
+                ),
+                apns=messaging.APNSConfig(
+                    payload=messaging.APNSPayload(
+                        aps=messaging.Aps(sound="default")
+                    )
+                )
+            )
+            messaging.send(msg)
+            print(f"[FCM] Notif terkirim ke {username}: {judul}")
+        except messaging.UnregisteredError:
+            print(f"[FCM] Token tidak valid, hapus: {token[:20]}...")
+            gagal.append(token)
+        except Exception as e:
+            print(f"[FCM] Gagal kirim notif: {e}")
+
+    # Hapus token yang sudah tidak valid
+    for token in gagal:
+        hapus_fcm_token(username, token)
+
+
+def kirim_notif_semua(judul: str, isi: str, data: dict = None):
+    """Kirim notifikasi ke semua username yang punya token (untuk IoT global)."""
+    if not FCM_ENABLED:
+        return
+    conn = sqlite3.connect(DB_PATH)
+    c = conn.cursor()
+    c.execute("SELECT DISTINCT username FROM fcm_tokens")
+    usernames = [r[0] for r in c.fetchall()]
+    conn.close()
+    for username in usernames:
+        kirim_notif(username, judul, isi, data)
+
+
+# ─────────────────────────────────────────
+# DATABASE HELPERS
+# ─────────────────────────────────────────
 def get_perangkat(username: str = "default"):
     conn = sqlite3.connect(DB_PATH)
     c = conn.cursor()
@@ -111,7 +257,7 @@ def get_logs(username: str = "default"):
 
 
 # ─────────────────────────────────────────
-# ENDPOINTS
+# ENDPOINTS: Device Monitoring
 # ─────────────────────────────────────────
 @app.get("/devices")
 def get_devices(x_username: str = Header(default="default")):
@@ -136,7 +282,7 @@ def get_devices(x_username: str = Header(default="default")):
             continue
 
         if p["kategori"] == "IoT":
-            last_seen = iot_last_seen.get(p["nama"])
+            last_seen = iot_last_seen.get(p["ip"])  # pakai IP bukan nama
             if last_seen is None:
                 status = "OFFLINE"
                 lat = 0
@@ -155,14 +301,40 @@ def get_devices(x_username: str = Header(default="default")):
             else:
                 status = "ONLINE"
                 lat = int(latency * 1000)
+                # Notif latency tinggi — dengan cooldown agar tidak spam
                 if lat > 200:
-                    tambah_log(p["nama"], f"Latency Tinggi ({lat}ms)", False, x_username)
+                    cooldown_key = f"{x_username}_{p['nama']}_latency"
+                    if boleh_kirim_notif(cooldown_key):
+                        tambah_log(p["nama"], f"Latency Tinggi ({lat}ms)", False, x_username)
+                        kirim_notif(
+                            x_username,
+                            f"⚠️ Latency Tinggi: {p['nama']}",
+                            f"Latency {p['nama']} mencapai {lat}ms (>200ms)",
+                            {"type": "high_latency", "device": p["nama"], "latency": str(lat)}
+                        )
 
         if status_lama != status:
             if status == "OFFLINE":
-                tambah_log(p["nama"], "Tidak Merespon", False, x_username)
+                cooldown_key = f"{x_username}_{p['nama']}_offline"
+                if boleh_kirim_notif(cooldown_key):
+                    tambah_log(p["nama"], "Tidak Merespon", False, x_username)
+                    kirim_notif(
+                        x_username,
+                        f"🔴 {p['nama']} OFFLINE",
+                        f"Perangkat {p['nama']} ({p['ip']}) tidak merespon",
+                        {"type": "device_offline", "device": p["nama"], "ip": p["ip"]}
+                    )
             elif status == "ONLINE" and status_lama == "OFFLINE":
+                # Device kembali online → reset cooldown offline & latency
+                reset_cooldown(f"{x_username}_{p['nama']}_offline")
+                reset_cooldown(f"{x_username}_{p['nama']}_latency")
                 tambah_log(p["nama"], "Kembali Normal", True, x_username)
+                kirim_notif(
+                    x_username,
+                    f"🟢 {p['nama']} Kembali Online",
+                    f"Perangkat {p['nama']} ({p['ip']}) sudah kembali normal",
+                    {"type": "device_online", "device": p["nama"], "ip": p["ip"]}
+                )
             status_terakhir[key] = status
 
         hasil.append({
@@ -230,39 +402,100 @@ def cek_koneksi(ip: str):
     return {"status": "ONLINE", "latency": int(latency * 1000)}
 
 
+# ─────────────────────────────────────────
+# ENDPOINTS: IoT
+# ─────────────────────────────────────────
 @app.post("/iot/update")
 def iot_update(data: dict):
     global iot_data
-    iot_data = data
+    ip = data.get("ip", "")
     device_name = data.get("device", "IoT")
-    iot_last_seen[device_name] = datetime.now()
+
+    # Simpan data per IP — nama bebas, IP sebagai kunci
+    if ip:
+        iot_data[ip] = data
+        iot_last_seen[ip] = datetime.now()
+    else:
+        # Fallback pakai nama kalau tidak ada IP
+        iot_data[device_name] = data
+        iot_last_seen[device_name] = datetime.now()
+
     pakan = data.get("persentasePakan", 100)
     air = data.get("persentaseAir", 100)
+
     if isinstance(pakan, (int, float)) and pakan < 20:
-        tambah_log(device_name, f"Pakan Hampir Habis ({int(pakan)}%)", False)
+        cooldown_key = f"iot_{ip or device_name}_pakan"
+        if boleh_kirim_notif(cooldown_key):
+            tambah_log(device_name, f"Pakan Hampir Habis ({int(pakan)}%)", False)
+            kirim_notif_semua(
+                f"🍚 Pakan Hampir Habis!",
+                f"Sisa pakan {device_name}: {int(pakan)}%",
+                {"type": "pakan_low", "device": device_name, "value": str(int(pakan))}
+            )
+
     if isinstance(air, (int, float)) and air < 20:
-        tambah_log(device_name, f"Air Hampir Habis ({int(air)}%)", False)
+        cooldown_key = f"iot_{ip or device_name}_air"
+        if boleh_kirim_notif(cooldown_key):
+            tambah_log(device_name, f"Air Hampir Habis ({int(air)}%)", False)
+            kirim_notif_semua(
+                f"💧 Air Hampir Habis!",
+                f"Sisa air {device_name}: {int(air)}%",
+                {"type": "air_low", "device": device_name, "value": str(int(air))}
+            )
+
+    # Reset cooldown pakan/air jika sudah terisi kembali
+    if isinstance(pakan, (int, float)) and pakan >= 20:
+        reset_cooldown(f"iot_{ip or device_name}_pakan")
+    if isinstance(air, (int, float)) and air >= 20:
+        reset_cooldown(f"iot_{ip or device_name}_air")
+
     return {"ok": True}
 
 
 @app.get("/iot/status")
-def iot_status():
-    global iot_data
-    for device_name, last_seen in iot_last_seen.items():
-        if datetime.now() - last_seen > timedelta(seconds=15):
-            iot_data["status"] = "OFFLINE"
-            iot_data["latency"] = 0
-            if status_terakhir.get(device_name) != "OFFLINE":
-                tambah_log(device_name, "Tidak Merespon - Device mati", False)
-                status_terakhir[device_name] = "OFFLINE"
-        else:
-            if status_terakhir.get(device_name) == "OFFLINE":
-                tambah_log(device_name, "Kembali Normal", True)
-                status_terakhir[device_name] = "ONLINE"
-            iot_data["status"] = "ONLINE"
+def iot_status_all():
+    """Ambil semua data IoT (untuk kompatibilitas lama)."""
     return iot_data
 
+@app.get("/iot/status/{ip}")
+def iot_status(ip: str):
+    """Ambil data IoT berdasarkan IP device."""
+    global iot_data
+    data = iot_data.get(ip, {})
+    last_seen = iot_last_seen.get(ip)
 
+    if last_seen is None or datetime.now() - last_seen > timedelta(seconds=15):
+        if status_terakhir.get(ip) != "OFFLINE":
+            device_name = data.get("device", ip)
+            cooldown_key = f"iot_{ip}_offline"
+            if boleh_kirim_notif(cooldown_key):
+                tambah_log(device_name, "Tidak Merespon - Device mati", False)
+                kirim_notif_semua(
+                    f"🔴 IoT {device_name} OFFLINE",
+                    f"Perangkat IoT {device_name} tidak mengirim data lebih dari 15 detik",
+                    {"type": "iot_offline", "device": device_name}
+                )
+            status_terakhir[ip] = "OFFLINE"
+        return {**data, "status": "OFFLINE"}
+    else:
+        if status_terakhir.get(ip) == "OFFLINE":
+            device_name = data.get("device", ip)
+            reset_cooldown(f"iot_{ip}_offline")
+            reset_cooldown(f"iot_{ip}_pakan")
+            reset_cooldown(f"iot_{ip}_air")
+            tambah_log(device_name, "Kembali Normal", True)
+            kirim_notif_semua(
+                f"🟢 IoT {device_name} Kembali Online",
+                f"Perangkat IoT {device_name} sudah kembali mengirim data",
+                {"type": "iot_online", "device": device_name}
+            )
+            status_terakhir[ip] = "ONLINE"
+        return {**data, "status": "ONLINE"}
+
+
+# ─────────────────────────────────────────
+# ENDPOINTS: Diagnosis
+# ─────────────────────────────────────────
 @app.get("/diagnosis")
 def get_diagnosis(x_username: str = Header(default="default")):
     global internet_terakhir
@@ -278,8 +511,25 @@ def get_diagnosis(x_username: str = Header(default="default")):
     if internet_terakhir is not None and internet_terakhir != internet_ok:
         if not internet_ok:
             tambah_log("SISTEM", "Koneksi Internet Terputus", False, x_username)
+            cooldown_key = f"{x_username}_internet_down"
+            if boleh_kirim_notif(cooldown_key):
+                kirim_notif(
+                    x_username,
+                    "🌐 Internet Terputus!",
+                    "Koneksi internet tidak dapat dijangkau. Cek router atau hubungi ISP.",
+                    {"type": "internet_down"}
+                )
         else:
+            # Internet kembali → reset cooldown
+            reset_cooldown(f"{x_username}_internet_down")
+            reset_cooldown(f"{x_username}_router_down")
             tambah_log("SISTEM", "Koneksi Internet Kembali Normal", True, x_username)
+            kirim_notif(
+                x_username,
+                "🌐 Internet Kembali Normal",
+                "Koneksi internet sudah pulih kembali.",
+                {"type": "internet_up"}
+            )
     internet_terakhir = internet_ok
 
     if router is None:
@@ -299,6 +549,14 @@ def get_diagnosis(x_username: str = Header(default="default")):
             ]
         })
         tambah_log("SISTEM", "Jaringan Lokal Terputus Total", False, x_username)
+        cooldown_key = f"{x_username}_router_down"
+        if boleh_kirim_notif(cooldown_key):
+            kirim_notif(
+                x_username,
+                "🔴 Jaringan Lokal Terputus!",
+                "Router tidak dapat dijangkau. Kemungkinan router mati atau kabel power tercabut.",
+                {"type": "network_down"}
+            )
     elif not internet_ok:
         hasil.append({
             "level": "TINGGI",
@@ -372,6 +630,9 @@ def get_diagnosis(x_username: str = Header(default="default")):
     return hasil
 
 
+# ─────────────────────────────────────────
+# ENDPOINTS: Log
+# ─────────────────────────────────────────
 @app.delete("/logs/hapus-semua")
 def hapus_semua_log(x_username: str = Header(default="default")):
     conn = sqlite3.connect(DB_PATH)
@@ -380,6 +641,52 @@ def hapus_semua_log(x_username: str = Header(default="default")):
     conn.commit()
     conn.close()
     return {"ok": True}
+
+
+# ─────────────────────────────────────────
+# ENDPOINTS: FCM Token Management
+# ─────────────────────────────────────────
+@app.post("/fcm/register")
+def register_fcm_token(data: dict, x_username: str = Header(default="default")):
+    """Daftarkan FCM token untuk menerima push notification."""
+    token = data.get("token", "").strip()
+    platform = data.get("platform", "web")
+    if not token:
+        raise HTTPException(status_code=400, detail="Token FCM tidak boleh kosong")
+    simpan_fcm_token(x_username, token, platform)
+    return {"ok": True, "message": "Token FCM berhasil didaftarkan"}
+
+
+@app.delete("/fcm/unregister")
+def unregister_fcm_token(data: dict, x_username: str = Header(default="default")):
+    """Hapus FCM token (saat logout atau ganti device)."""
+    token = data.get("token", "").strip()
+    if not token:
+        raise HTTPException(status_code=400, detail="Token tidak boleh kosong")
+    hapus_fcm_token(x_username, token)
+    return {"ok": True, "message": "Token FCM berhasil dihapus"}
+
+
+@app.get("/fcm/tokens")
+def list_fcm_tokens(x_username: str = Header(default="default")):
+    """Lihat jumlah token terdaftar untuk username ini."""
+    tokens = get_fcm_tokens(x_username)
+    return {"username": x_username, "jumlah_token": len(tokens)}
+
+
+@app.post("/fcm/test")
+def test_notif(x_username: str = Header(default="default")):
+    """Test kirim push notification ke device terdaftar."""
+    tokens = get_fcm_tokens(x_username)
+    if not tokens:
+        return {"ok": False, "message": "Tidak ada token FCM terdaftar untuk user ini"}
+    kirim_notif(
+        x_username,
+        "🔔 Test Notifikasi",
+        "Notifikasi Firebase FCM berhasil dikonfigurasi!",
+        {"type": "test", "timestamp": datetime.now().isoformat()}
+    )
+    return {"ok": True, "tokens_terdaftar": len(tokens), "message": "Notifikasi test berhasil dikirim"}
 
 
 if __name__ == "__main__":
