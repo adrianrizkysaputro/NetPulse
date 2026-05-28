@@ -224,44 +224,65 @@ fun HalamanDetailDevice(
             Spacer(modifier = Modifier.height(12.dp))
 
             // IoT data sensor
-            if (device.kategori == "IoT" && iotData.isNotEmpty()) {
-                Card(
-                    modifier = Modifier.fillMaxWidth(),
-                    shape = RoundedCornerShape(16.dp),
-                    elevation = CardDefaults.cardElevation(2.dp),
-                    colors = CardDefaults.cardColors(containerColor = WarnaCard)
-                ) {
-                    Column(modifier = Modifier.padding(16.dp)) {
-                        Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(8.dp)) {
-                            Icon(Icons.Default.BarChart, contentDescription = null, tint = WarnaTeksUtama, modifier = Modifier.size(18.dp))
-                            Text("Data Sensor", fontSize = 14.sp, fontWeight = FontWeight.Bold, color = WarnaTeksUtama)
-                        }
-                        Spacer(modifier = Modifier.height(6.dp))
-                        HorizontalDivider(color = WarnaBorder)
-                        Spacer(modifier = Modifier.height(6.dp))
-                        val skipKeys = listOf("device", "ip")
-                        iotData.forEach { (key, value) ->
-                            if (key !in skipKeys) {
-                                Row(
-                                    modifier = Modifier.fillMaxWidth().padding(vertical = 2.dp),
-                                    horizontalArrangement = Arrangement.SpaceBetween
-                                ) {
-                                    Text(key.replaceFirstChar { it.uppercase() }, fontSize = 13.sp, color = WarnaTeksDim)
-                                    Text(
-                                        text = value.toString(),
-                                        fontSize = 13.sp,
-                                        fontWeight = FontWeight.Bold,
-                                        color = when {
-                                            value.toString().contains("Habis") -> WarnaMerah
-                                            value.toString().contains("Penuh") -> WarnaHijau
-                                            value.toString().contains("Sedikit") -> WarnaKuning
-                                            value.toString() == "true" -> WarnaHijau
-                                            value.toString() == "false" -> WarnaTeksDim
-                                            else -> WarnaTeksUtama
-                                        }
-                                    )
+            if (device.kategori == "IoT") {
+                if (iotData.isNotEmpty()) {
+                    Card(
+                        modifier = Modifier.fillMaxWidth(),
+                        shape = RoundedCornerShape(16.dp),
+                        elevation = CardDefaults.cardElevation(2.dp),
+                        colors = CardDefaults.cardColors(containerColor = WarnaCard)
+                    ) {
+                        Column(modifier = Modifier.padding(16.dp)) {
+                            Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                                Icon(Icons.Default.BarChart, contentDescription = null, tint = WarnaTeksUtama, modifier = Modifier.size(18.dp))
+                                Text("Data Sensor", fontSize = 14.sp, fontWeight = FontWeight.Bold, color = WarnaTeksUtama)
+                            }
+                            Spacer(modifier = Modifier.height(6.dp))
+                            HorizontalDivider(color = WarnaBorder)
+                            Spacer(modifier = Modifier.height(6.dp))
+                            val skipKeys = listOf("device", "ip")
+                            iotData.forEach { (key, value) ->
+                                if (key !in skipKeys) {
+                                    Row(
+                                        modifier = Modifier.fillMaxWidth().padding(vertical = 2.dp),
+                                        horizontalArrangement = Arrangement.SpaceBetween
+                                    ) {
+                                        Text(key.replaceFirstChar { it.uppercase() }, fontSize = 13.sp, color = WarnaTeksDim)
+                                        Text(
+                                            text = value.toString(),
+                                            fontSize = 13.sp,
+                                            fontWeight = FontWeight.Bold,
+                                            color = when {
+                                                value.toString().contains("Habis") -> WarnaMerah
+                                                value.toString().contains("Penuh") -> WarnaHijau
+                                                value.toString().contains("Sedikit") -> WarnaKuning
+                                                value.toString() == "true" -> WarnaHijau
+                                                value.toString() == "false" -> WarnaTeksDim
+                                                else -> WarnaTeksUtama
+                                            }
+                                        )
+                                    }
+                                    HorizontalDivider(color = WarnaBorder)
                                 }
-                                HorizontalDivider(color = WarnaBorder)
+                            }
+                        }
+                    }
+                } else {
+                    Card(
+                        modifier = Modifier.fillMaxWidth(),
+                        shape = RoundedCornerShape(16.dp),
+                        elevation = CardDefaults.cardElevation(2.dp),
+                        colors = CardDefaults.cardColors(containerColor = WarnaCard)
+                    ) {
+                        Row(
+                            modifier = Modifier.padding(16.dp),
+                            verticalAlignment = Alignment.CenterVertically,
+                            horizontalArrangement = Arrangement.spacedBy(10.dp)
+                        ) {
+                            Icon(Icons.Default.Info, contentDescription = null, tint = WarnaTeksDim, modifier = Modifier.size(24.dp))
+                            Column {
+                                Text("Menunggu Data", fontSize = 14.sp, fontWeight = FontWeight.Bold, color = WarnaTeksUtama)
+                                Text("Perangkat belum mengirim data sensor.", fontSize = 12.sp, color = WarnaTeksDim)
                             }
                         }
                     }
@@ -269,10 +290,66 @@ fun HalamanDetailDevice(
 
                 Spacer(modifier = Modifier.height(12.dp))
 
-                // Diagnosis IoT
-                val persentasePakan = iotData["persentasePakan"]?.toString()?.toDoubleOrNull() ?: 0.0
-                val persentaseAir = iotData["persentaseAir"]?.toString()?.toDoubleOrNull() ?: 0.0
-                if (persentasePakan < 20 || persentaseAir < 20) {
+                // --- DIAGNOSIS UNIVERSAL (Optimized: No Duplicates) ---
+                val diagnosisMap = mutableMapOf<String, Pair<String, String>>() // Key: Kategori (air, pakan, suhu, dll)
+
+                iotData.forEach { (key, value) ->
+                    val valStr = value.toString()
+                    val valNum = valStr.toDoubleOrNull()
+                    val keyLower = key.lowercase()
+
+                    when {
+                        // 1. Deteksi Berdasarkan Nilai Numerik
+                        valNum != null -> {
+                            when {
+                                (keyLower.contains("suhu") || keyLower.contains("temp")) && valNum > 35 -> {
+                                    diagnosisMap["suhu_panas"] = "Suhu terlalu panas (${valNum.toInt()}°C)" to "Gunakan pendingin atau cek sirkulasi udara"
+                                }
+                                (keyLower.contains("suhu") || keyLower.contains("temp")) && valNum < 15 -> {
+                                    diagnosisMap["suhu_dingin"] = "Suhu terlalu dingin (${valNum.toInt()}°C)" to "Cek pemanas atau isolasi ruangan"
+                                }
+                                (keyLower.contains("air") || keyLower.contains("water")) && valNum < 20 -> {
+                                    diagnosisMap["air"] = "Air hampir habis (${valNum.toInt()}%)" to "Isi ulang Air segera"
+                                }
+                                (keyLower.contains("pakan") || keyLower.contains("feed")) && valNum < 20 -> {
+                                    diagnosisMap["pakan"] = "Pakan hampir habis (${valNum.toInt()}%)" to "Isi ulang Pakan segera"
+                                }
+                                keyLower.contains("tegangan") && valNum < 10 -> {
+                                    diagnosisMap["tegangan"] = "Tegangan drop (${valNum}V)" to "Cek sumber daya atau baterai"
+                                }
+                                keyLower.contains("gas") && valNum > 400 -> {
+                                    diagnosisMap["gas"] = "Kebocoran Gas/Asap terdeteksi!" to "Buka ventilasi dan matikan sumber api"
+                                }
+                            }
+                        }
+                        // 2. Deteksi Berdasarkan Status Teks/Boolean
+                        valStr.contains("Habis", true) || valStr.contains("Critical", true) || (valStr == "true" && (keyLower == "alert" || keyLower == "warning")) -> {
+                            // Tentukan kategori dari nama key
+                            val category = when {
+                                keyLower.contains("air") || keyLower.contains("water") -> "air"
+                                keyLower.contains("pakan") || keyLower.contains("feed") -> "pakan"
+                                keyLower == "alert" || keyLower == "warning" -> "umum"
+                                else -> "sensor_$key"
+                            }
+
+                            // Hanya tambahkan jika kategori ini belum ada diagnosisnya (prioritas numerik)
+                            if (!diagnosisMap.containsKey(category)) {
+                                if (category == "umum") {
+                                    // Hanya muncul jika tidak ada diagnosis spesifik lain
+                                    val hasSpecific = diagnosisMap.keys.any { it in listOf("air", "pakan", "suhu_panas", "suhu_dingin", "gas") }
+                                    if (!hasSpecific) {
+                                        diagnosisMap["umum"] = "Kondisi kritis pada perangkat" to "Cek fisik perangkat dan sensor segera"
+                                    }
+                                } else {
+                                    val label = key.replaceFirstChar { it.uppercase() }
+                                    diagnosisMap[category] = "Kondisi kritis pada: $label" to "Cek fisik perangkat dan sensor segera"
+                                }
+                            }
+                        }
+                    }
+                }
+
+                if (diagnosisMap.isNotEmpty()) {
                     Card(
                         modifier = Modifier.fillMaxWidth(),
                         shape = RoundedCornerShape(16.dp),
@@ -282,35 +359,18 @@ fun HalamanDetailDevice(
                         Column(modifier = Modifier.padding(14.dp)) {
                             Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(8.dp)) {
                                 Icon(Icons.Default.Warning, contentDescription = null, tint = Color(0xFFB45309), modifier = Modifier.size(20.dp))
-                                Text("Gangguan Terdeteksi", fontSize = 14.sp, fontWeight = FontWeight.Bold, color = Color(0xFFB45309))
+                                Text("Diagnosis Sistem", fontSize = 14.sp, fontWeight = FontWeight.Bold, color = Color(0xFFB45309))
                             }
                             Spacer(modifier = Modifier.height(8.dp))
-                            if (persentasePakan < 20) {
-                                Text("Problem: Pakan hampir habis (${persentasePakan.toInt()}%)", fontSize = 13.sp, color = WarnaMerah)
-                                Spacer(modifier = Modifier.height(4.dp))
-                                Text("Solusi:", fontSize = 13.sp, fontWeight = FontWeight.Bold, color = WarnaTeksUtama)
+
+                            diagnosisMap.values.forEach { (problem, solusi) ->
+                                Text("Problem: $problem", fontSize = 13.sp, color = WarnaMerah, fontWeight = FontWeight.Bold)
+                                Spacer(modifier = Modifier.height(2.dp))
                                 Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(4.dp)) {
                                     Icon(Icons.Default.CheckCircle, contentDescription = null, tint = WarnaHijau, modifier = Modifier.size(14.dp))
-                                    Text("Isi ulang pakan segera", fontSize = 13.sp, color = WarnaTeksUtama)
+                                    Text("Solusi: $solusi", fontSize = 13.sp, color = WarnaTeksUtama)
                                 }
-                                Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(4.dp)) {
-                                    Icon(Icons.Default.CheckCircle, contentDescription = null, tint = WarnaHijau, modifier = Modifier.size(14.dp))
-                                    Text("Cek sensor ultrasonik", fontSize = 13.sp, color = WarnaTeksUtama)
-                                }
-                            }
-                            if (persentaseAir < 20) {
                                 Spacer(modifier = Modifier.height(8.dp))
-                                Text("Problem: Air hampir habis (${persentaseAir.toInt()}%)", fontSize = 13.sp, color = WarnaMerah)
-                                Spacer(modifier = Modifier.height(4.dp))
-                                Text("Solusi:", fontSize = 13.sp, fontWeight = FontWeight.Bold, color = WarnaTeksUtama)
-                                Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(4.dp)) {
-                                    Icon(Icons.Default.CheckCircle, contentDescription = null, tint = WarnaHijau, modifier = Modifier.size(14.dp))
-                                    Text("Isi ulang air segera", fontSize = 13.sp, color = WarnaTeksUtama)
-                                }
-                                Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(4.dp)) {
-                                    Icon(Icons.Default.CheckCircle, contentDescription = null, tint = WarnaHijau, modifier = Modifier.size(14.dp))
-                                    Text("Cek sensor water level", fontSize = 13.sp, color = WarnaTeksUtama)
-                                }
                             }
                         }
                     }
