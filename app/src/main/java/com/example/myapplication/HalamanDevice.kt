@@ -1,12 +1,21 @@
 package com.example.myapplication
 
+import androidx.compose.foundation.BorderStroke
 import android.widget.Toast
+import androidx.compose.animation.AnimatedContent
 import androidx.compose.animation.AnimatedVisibility
+import androidx.compose.animation.core.tween
+import androidx.compose.animation.fadeIn
+import androidx.compose.animation.fadeOut
+import androidx.compose.animation.slideInHorizontally
+import androidx.compose.animation.slideOutHorizontally
+import androidx.compose.animation.togetherWith
 import androidx.compose.foundation.background
 import androidx.compose.foundation.border
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.rememberScrollState
+import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.foundation.verticalScroll
 import androidx.compose.material.icons.Icons
@@ -16,11 +25,13 @@ import androidx.compose.material3.*
 import androidx.compose.runtime.*
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.draw.clip
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.vector.ImageVector
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextAlign
+import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import kotlinx.coroutines.Dispatchers
@@ -82,40 +93,53 @@ fun HalamanDevice(
         )
     }
 
-    if (selectedDevice != null) {
-        val device = selectedDevice!!
-        HalamanDetailDevice(
-            device = device,
-            iotData = iotData,
-            paddingValues = paddingValues,
-            onBack = { selectedDevice = null },
-            onFetchDevices = onFetchDevices
-        )
-    } else {
-        HalamanListDevice(
-            devices = devices,
-            searchQuery = searchQuery,
-            onSearchQueryChange = onSearchQueryChange,
-            paddingValues = paddingValues,
-            onTambah = { showDialogTambah = true },
-            onPilihDevice = { selectedDevice = it },
-            onHapusDevice = { perangkat ->
-                GlobalScope.launch {
-                    try {
-                        val username = AppPrefs.getActiveUsername(context)
-                        RetrofitClient.instance.hapusDevice(perangkat.id, username)
-                        onFetchDevices()
-                        withContext(Dispatchers.Main) {
-                            Toast.makeText(context, "✅ ${perangkat.nama} berhasil dihapus", Toast.LENGTH_SHORT).show()
-                        }
-                    } catch (e: Exception) {
-                        withContext(Dispatchers.Main) {
-                            Toast.makeText(context, "❌ Gagal hapus device", Toast.LENGTH_SHORT).show()
+    AnimatedContent(
+        targetState = selectedDevice,
+        transitionSpec = {
+            if (targetState != null) {
+                (slideInHorizontally(tween(300)) { it / 4 } + fadeIn(tween(300)))
+                    .togetherWith(slideOutHorizontally(tween(300)) { -it / 4 } + fadeOut(tween(150)))
+            } else {
+                (slideInHorizontally(tween(300)) { -it / 4 } + fadeIn(tween(300)))
+                    .togetherWith(slideOutHorizontally(tween(300)) { it / 4 } + fadeOut(tween(150)))
+            }
+        },
+        label = "deviceDetail"
+    ) { device ->
+        if (device != null) {
+            HalamanDetailDevice(
+                device = device,
+                iotData = iotData,
+                paddingValues = paddingValues,
+                onBack = { selectedDevice = null },
+                onFetchDevices = onFetchDevices
+            )
+        } else {
+            HalamanListDevice(
+                devices = devices,
+                searchQuery = searchQuery,
+                onSearchQueryChange = onSearchQueryChange,
+                paddingValues = paddingValues,
+                onTambah = { showDialogTambah = true },
+                onPilihDevice = { selectedDevice = it },
+                onHapusDevice = { perangkat ->
+                    GlobalScope.launch {
+                        try {
+                            val username = AppPrefs.getActiveUsername(context)
+                            RetrofitClient.instance.hapusDevice(perangkat.id, username)
+                            onFetchDevices()
+                            withContext(Dispatchers.Main) {
+                                Toast.makeText(context, "✅ ${perangkat.nama} berhasil dihapus", Toast.LENGTH_SHORT).show()
+                            }
+                        } catch (e: Exception) {
+                            withContext(Dispatchers.Main) {
+                                Toast.makeText(context, "❌ Gagal hapus device", Toast.LENGTH_SHORT).show()
+                            }
                         }
                     }
                 }
-            }
-        )
+            )
+        }
     }
 }
 
@@ -131,14 +155,13 @@ fun HalamanDetailDevice(
     Column(
         modifier = Modifier
             .fillMaxSize()
-            .background(WarnaBg)
-            .padding(paddingValues)
+            .padding(bottom = paddingValues.calculateBottomPadding())
     ) {
-        // Header
+        // Header (di atas bar biru yang digambar MainActivity)
         Row(
             modifier = Modifier
                 .fillMaxWidth()
-                .background(WarnaCard)
+                .statusBarsPadding()
                 .padding(horizontal = 16.dp, vertical = 12.dp),
             verticalAlignment = Alignment.CenterVertically,
             horizontalArrangement = Arrangement.spacedBy(12.dp)
@@ -146,22 +169,22 @@ fun HalamanDetailDevice(
             Box(
                 modifier = Modifier
                     .clickable { onBack() }
-                    .background(WarnaBg, RoundedCornerShape(8.dp))
+                    .background(Color.White.copy(alpha = 0.2f), RoundedCornerShape(8.dp))
                     .padding(8.dp)
             ) {
                 Icon(
                     imageVector = Icons.AutoMirrored.Filled.ArrowBack,
                     contentDescription = "Kembali",
-                    tint = WarnaTeksUtama,
+                    tint = Color.White,
                     modifier = Modifier.size(20.dp)
                 )
             }
-            Text(device.nama, fontSize = 18.sp, fontWeight = FontWeight.Bold, color = WarnaTeksUtama)
+            Text(device.nama, fontSize = 18.sp, fontWeight = FontWeight.Bold, color = Color.White)
             Spacer(modifier = Modifier.weight(1f))
             val warnaStatus = if (device.status == "ONLINE") WarnaHijau else WarnaMerah
             Box(
                 modifier = Modifier
-                    .background(warnaStatus.copy(alpha = 0.1f), RoundedCornerShape(20.dp))
+                    .background(Color.White, RoundedCornerShape(20.dp))
                     .padding(horizontal = 10.dp, vertical = 4.dp)
             ) {
                 Text(
@@ -177,7 +200,7 @@ fun HalamanDetailDevice(
             modifier = Modifier
                 .weight(1f)
                 .verticalScroll(rememberScrollState())
-                .padding(16.dp)
+                .padding(start = 16.dp, end = 16.dp, top = 24.dp, bottom = 16.dp)
         ) {
             // Info dasar
             Card(
@@ -473,209 +496,303 @@ fun HalamanListDevice(
         }
     }
 
+    StatusBarIkonPutih()
+
+    val onlineCount = devices.count { it.status == "ONLINE" }
+    val downCount = devices.size - onlineCount
+    val adaSearch = devices.isNotEmpty()
+    var filterKategori by remember { mutableStateOf("Semua") }
+
     Column(
         modifier = Modifier
             .fillMaxSize()
-            .background(WarnaBg)
-            .padding(paddingValues)
-            .padding(horizontal = 16.dp)
+            .padding(bottom = paddingValues.calculateBottomPadding())
     ) {
+        // Teks header. Bar biru-nya digambar MainActivity di belakang (tingginya beranimasi antar tab)
         Row(
-            modifier = Modifier.fillMaxWidth().padding(vertical = 8.dp),
-            horizontalArrangement = Arrangement.SpaceBetween,
-            verticalAlignment = Alignment.CenterVertically
-        ) {
-            Text("Device", color = WarnaTeksUtama, fontSize = 20.sp, fontWeight = FontWeight.Bold)
-            Box(
-                modifier = Modifier
-                    .clickable { onTambah() }
-                    .background(Color(0xFF2563EB), RoundedCornerShape(12.dp))
-                    .padding(horizontal = 12.dp, vertical = 6.dp)
-            ) {
-                Text("+ Tambah", fontSize = 13.sp, color = Color.White, fontWeight = FontWeight.Bold)
-            }
-        }
-
-        Spacer(modifier = Modifier.height(8.dp))
-        Box(
             modifier = Modifier
                 .fillMaxWidth()
-                .height(48.dp)
-                .border(1.dp, WarnaBorder, RoundedCornerShape(12.dp))
-                .background(WarnaCard, RoundedCornerShape(12.dp)),
-            contentAlignment = Alignment.CenterStart
+                .statusBarsPadding()
+                .height(84.dp)
+                .padding(top = 12.dp, start = 20.dp, end = 20.dp),
+            verticalAlignment = Alignment.Top
         ) {
-            androidx.compose.foundation.text.BasicTextField(
-                value = searchQuery,
-                onValueChange = onSearchQueryChange,
-                singleLine = true,
-                textStyle = androidx.compose.ui.text.TextStyle(fontSize = 13.sp, color = WarnaTeksUtama),
-                decorationBox = { innerTextField ->
-                    Row(
-                        modifier = Modifier.fillMaxSize().padding(horizontal = 12.dp),
-                        verticalAlignment = Alignment.CenterVertically,
-                        horizontalArrangement = Arrangement.spacedBy(8.dp)
-                    ) {
-                        Icon(Icons.Default.Search, contentDescription = null, tint = WarnaTeksDim, modifier = Modifier.size(16.dp))
-                        Box(modifier = Modifier.weight(1f)) {
-                            if (searchQuery.isEmpty()) Text("Cari perangkat...", fontSize = 13.sp, color = WarnaTeksDim)
-                            innerTextField()
-                        }
-                        if (searchQuery.isNotEmpty()) {
-                            Icon(
-                                imageVector = Icons.Default.Close,
-                                contentDescription = "Hapus",
-                                tint = WarnaTeksDim,
-                                modifier = Modifier.size(16.dp).clickable { onSearchQueryChange("") }
-                            )
-                        }
-                    }
-                }
-            )
+            Column(modifier = Modifier.weight(1f)) {
+                Text("Perangkat", color = Color.White, fontSize = 24.sp, fontWeight = FontWeight.Bold)
+                Text(
+                    text = if (devices.isEmpty()) "Belum ada perangkat"
+                    else "${devices.size} perangkat • $onlineCount normal • $downCount down",
+                    color = Color.White.copy(alpha = 0.85f),
+                    fontSize = 13.sp
+                )
+            }
+            Row(
+                modifier = Modifier
+                    .padding(top = 4.dp)
+                    .clip(RoundedCornerShape(14.dp))
+                    .background(Color.White)
+                    .clickable { onTambah() }
+                    .padding(horizontal = 14.dp, vertical = 9.dp),
+                verticalAlignment = Alignment.CenterVertically
+            ) {
+                Icon(Icons.Default.Add, contentDescription = null, tint = WarnaBrand, modifier = Modifier.size(18.dp))
+                Spacer(modifier = Modifier.width(4.dp))
+                Text("Tambah", color = WarnaBrand, fontSize = 13.sp, fontWeight = FontWeight.Bold)
+            }
         }
-        Spacer(modifier = Modifier.height(12.dp))
+
+        if (adaSearch) {
+            Card(
+                modifier = Modifier
+                    .padding(horizontal = 16.dp)
+                    .fillMaxWidth()
+                    .height(48.dp),
+                shape = RoundedCornerShape(16.dp),
+                elevation = CardDefaults.cardElevation(6.dp),
+                colors = CardDefaults.cardColors(containerColor = WarnaCard)
+            ) {
+                Box(modifier = Modifier.fillMaxSize(), contentAlignment = Alignment.CenterStart) {
+                    androidx.compose.foundation.text.BasicTextField(
+                        value = searchQuery,
+                        onValueChange = onSearchQueryChange,
+                        singleLine = true,
+                        textStyle = androidx.compose.ui.text.TextStyle(fontSize = 14.sp, color = WarnaTeksUtama),
+                        decorationBox = { innerTextField ->
+                            Row(
+                                modifier = Modifier.fillMaxSize().padding(horizontal = 14.dp),
+                                verticalAlignment = Alignment.CenterVertically,
+                                horizontalArrangement = Arrangement.spacedBy(8.dp)
+                            ) {
+                                Icon(Icons.Default.Search, contentDescription = null, tint = WarnaTeksDim, modifier = Modifier.size(18.dp))
+                                Box(modifier = Modifier.weight(1f)) {
+                                    if (searchQuery.isEmpty()) Text("Cari perangkat...", fontSize = 14.sp, color = WarnaTeksDim)
+                                    innerTextField()
+                                }
+                                if (searchQuery.isNotEmpty()) {
+                                    Icon(
+                                        imageVector = Icons.Default.Close,
+                                        contentDescription = "Hapus",
+                                        tint = WarnaTeksDim,
+                                        modifier = Modifier.size(18.dp).clickable { onSearchQueryChange("") }
+                                    )
+                                }
+                            }
+                        }
+                    )
+                }
+            }
+            Spacer(modifier = Modifier.height(12.dp))
+        } else {
+            Spacer(modifier = Modifier.height(24.dp))
+        }
 
         if (devices.isEmpty()) {
-            Box(modifier = Modifier.fillMaxSize(), contentAlignment = Alignment.Center) {
-                Column(horizontalAlignment = Alignment.CenterHorizontally) {
-                    Icon(Icons.Default.Devices, contentDescription = null, tint = WarnaTeksDim, modifier = Modifier.size(64.dp))
-                    Spacer(modifier = Modifier.height(8.dp))
-                    Text("Belum ada perangkat.", fontSize = 14.sp, color = WarnaTeksDim)
-                    Text("Tap '+ Tambah' untuk mulai.", fontSize = 13.sp, color = WarnaTeksDim)
+            Column(
+                modifier = Modifier.fillMaxSize().padding(horizontal = 32.dp),
+                horizontalAlignment = Alignment.CenterHorizontally,
+                verticalArrangement = Arrangement.Center
+            ) {
+                Box(
+                    modifier = Modifier.size(88.dp).clip(CircleShape).background(WarnaBrand.copy(alpha = 0.1f)),
+                    contentAlignment = Alignment.Center
+                ) {
+                    Icon(Icons.Default.Devices, contentDescription = null, tint = WarnaBrand, modifier = Modifier.size(44.dp))
                 }
+                Spacer(modifier = Modifier.height(16.dp))
+                Text("Belum ada perangkat", fontSize = 17.sp, fontWeight = FontWeight.Bold, color = WarnaTeksUtama)
+                Spacer(modifier = Modifier.height(4.dp))
+                Text(
+                    "Tambahkan router, access point, atau perangkat IoT untuk mulai dipantau.",
+                    fontSize = 13.sp, color = WarnaTeksDim, textAlign = TextAlign.Center
+                )
+                Spacer(modifier = Modifier.height(20.dp))
+                Button(
+                    onClick = onTambah,
+                    shape = RoundedCornerShape(16.dp),
+                    colors = ButtonDefaults.buttonColors(containerColor = WarnaBrand)
+                ) {
+                    Icon(Icons.Default.Add, contentDescription = null, modifier = Modifier.size(18.dp))
+                    Spacer(modifier = Modifier.width(6.dp))
+                    Text("Tambah perangkat pertama", fontWeight = FontWeight.SemiBold)
+                }
+                Spacer(modifier = Modifier.height(80.dp))
             }
         } else {
-            val filteredDevices = if (searchQuery.isEmpty()) devices
-            else devices.filter {
-                it.nama.contains(searchQuery, ignoreCase = true) ||
-                        it.ip.contains(searchQuery, ignoreCase = true) ||
-                        it.kategori.contains(searchQuery, ignoreCase = true)
+            // ---------- Filter chip ----------
+            Row(
+                modifier = Modifier.fillMaxWidth().padding(horizontal = 16.dp),
+                horizontalArrangement = Arrangement.spacedBy(8.dp)
+            ) {
+                listOf("Semua", "Jaringan", "IoT", "Down").forEach { label ->
+                    ChipFilter(label = label, selected = filterKategori == label) { filterKategori = label }
+                }
+            }
+            Spacer(modifier = Modifier.height(8.dp))
+
+            val filteredDevices = devices.filter { d ->
+                val cocokFilter = when (filterKategori) {
+                    "Semua" -> true
+                    "Down" -> d.status != "ONLINE"
+                    else -> d.kategori == filterKategori
+                }
+                val cocokCari = searchQuery.isEmpty() ||
+                        d.nama.contains(searchQuery, ignoreCase = true) ||
+                        d.ip.contains(searchQuery, ignoreCase = true) ||
+                        d.kategori.contains(searchQuery, ignoreCase = true)
+                cocokFilter && cocokCari
             }
 
-            if (filteredDevices.isEmpty() && searchQuery.isNotEmpty()) {
+            if (filteredDevices.isEmpty()) {
                 Box(modifier = Modifier.fillMaxWidth().padding(32.dp), contentAlignment = Alignment.Center) {
                     Column(horizontalAlignment = Alignment.CenterHorizontally) {
                         Icon(Icons.Default.SearchOff, contentDescription = null, tint = WarnaTeksDim, modifier = Modifier.size(48.dp))
                         Spacer(modifier = Modifier.height(8.dp))
                         Text(
-                            text = "Tidak ada perangkat\nyang cocok dengan \"$searchQuery\"",
+                            text = if (searchQuery.isNotEmpty()) "Tidak ada perangkat\nyang cocok dengan \"$searchQuery\""
+                            else "Tidak ada perangkat\ndi kategori ini",
                             fontSize = 14.sp, color = WarnaTeksDim, textAlign = TextAlign.Center
                         )
                     }
                 }
             }
 
-            Column(modifier = Modifier.weight(1f).verticalScroll(rememberScrollState())) {
+            Column(
+                modifier = Modifier
+                    .weight(1f)
+                    .verticalScroll(rememberScrollState())
+                    .padding(horizontal = 16.dp)
+            ) {
                 filteredDevices.forEach { perangkat ->
-                    Card(
-                        modifier = Modifier
-                            .fillMaxWidth()
-                            .padding(vertical = 4.dp),
-                        shape = RoundedCornerShape(12.dp),
-                        elevation = CardDefaults.cardElevation(1.dp),
-                        colors = CardDefaults.cardColors(containerColor = WarnaCard),
-                        onClick = { onPilihDevice(perangkat) }
-                    ) {
-                        Row(
-                            modifier = Modifier
-                                .fillMaxWidth()
-                                .padding(10.dp),
-                            horizontalArrangement = Arrangement.SpaceBetween,
-                            verticalAlignment = Alignment.CenterVertically
-                        ) {
-                            Row(
-                                verticalAlignment = Alignment.CenterVertically,
-                                horizontalArrangement = Arrangement.spacedBy(10.dp),
-                                modifier = Modifier.weight(1f)
-                            ) {
-                                // Ikon lebih kecil
-                                Box(
-                                    modifier = Modifier
-                                        .size(40.dp)
-                                        .background(
-                                            if (perangkat.kategori == "IoT") Color(0xFFF0FDF4) else Color(0xFFEFF6FF),
-                                            RoundedCornerShape(8.dp)
-                                        ),
-                                    contentAlignment = Alignment.Center
-                                ) {
-                                    Icon(
-                                        imageVector = when (perangkat.nama.uppercase()) {
-                                            "ROUTER" -> Icons.Default.Router
-                                            "AP1", "AP2" -> Icons.Default.Wifi
-                                            "CCTV" -> Icons.Default.CameraAlt
-                                            "SENSOR" -> Icons.Default.Thermostat
-                                            "SMART DOOR" -> Icons.Default.MeetingRoom
-                                            "SMART LAMP" -> Icons.Default.Lightbulb
-                                            "SMART PLUG" -> Icons.Default.Power
-                                            "PAKAN BURUNG" -> Icons.Default.Pets
-                                            else -> if (perangkat.kategori == "IoT") Icons.Default.Smartphone else Icons.Default.Wifi
-                                        },
-                                        contentDescription = null,
-                                        tint = if (perangkat.kategori == "IoT") WarnaHijau else Color(0xFF2563EB),
-                                        modifier = Modifier.size(20.dp)
-                                    )
-                                }
-
-                                Column(modifier = Modifier.weight(1f)) {
-                                    Row(
-                                        verticalAlignment = Alignment.CenterVertically,
-                                        horizontalArrangement = Arrangement.spacedBy(6.dp)
-                                    ) {
-                                        Text(
-                                            text = perangkat.nama,
-                                            fontSize = 14.sp,
-                                            fontWeight = FontWeight.Bold,
-                                            color = WarnaTeksUtama,
-                                            maxLines = 1
-                                        )
-                                        // Badge Kategori Mini di samping Nama
-                                        Surface(
-                                            shape = RoundedCornerShape(4.dp),
-                                            color = (if (perangkat.kategori == "IoT") WarnaHijau else Color(0xFF2563EB)).copy(alpha = 0.1f)
-                                        ) {
-                                            Text(
-                                                text = perangkat.kategori,
-                                                fontSize = 9.sp,
-                                                fontWeight = FontWeight.Bold,
-                                                color = if (perangkat.kategori == "IoT") WarnaHijau else Color(0xFF2563EB),
-                                                modifier = Modifier.padding(horizontal = 4.dp, vertical = 1.dp)
-                                            )
-                                        }
-                                    }
-                                    Text(
-                                        text = perangkat.ip,
-                                        fontSize = 12.sp,
-                                        color = WarnaTeksDim
-                                    )
-                                }
-                            }
-
-                            Row(
-                                verticalAlignment = Alignment.CenterVertically,
-                                horizontalArrangement = Arrangement.spacedBy(4.dp)
-                            ) {
-                                val warnaStatus = if (perangkat.status == "ONLINE") WarnaHijau else WarnaMerah
-                                Text(
-                                    text = if (perangkat.status == "ONLINE") "Normal" else "Down",
-                                    fontSize = 11.sp,
-                                    color = warnaStatus,
-                                    fontWeight = FontWeight.Bold,
-                                    modifier = Modifier
-                                        .background(warnaStatus.copy(alpha = 0.1f), RoundedCornerShape(20.dp))
-                                        .padding(horizontal = 8.dp, vertical = 2.dp)
-                                )
-
-                                IconButton(
-                                    onClick = { deviceToDelete = perangkat; showDialogHapus = true },
-                                    modifier = Modifier.size(32.dp)
-                                ) {
-                                    Icon(Icons.Default.Delete, contentDescription = "Hapus", tint = WarnaTeksDim, modifier = Modifier.size(18.dp))
-                                }
-                            }
-                        }
-                    }
+                    KartuDeviceList(
+                        perangkat = perangkat,
+                        onClick = { onPilihDevice(perangkat) },
+                        onHapus = { deviceToDelete = perangkat; showDialogHapus = true }
+                    )
                 }
-                Spacer(modifier = Modifier.height(8.dp))
+                Spacer(modifier = Modifier.height(12.dp))
+            }
+        }
+    }
+}
+
+// ======================= Komponen khusus tab Device =======================
+
+@Composable
+private fun ChipFilter(label: String, selected: Boolean, onClick: () -> Unit) {
+    Text(
+        text = label,
+        fontSize = 13.sp,
+        fontWeight = FontWeight.SemiBold,
+        color = if (selected) Color.White else WarnaTeksDim,
+        modifier = Modifier
+            .clip(RoundedCornerShape(50))
+            .background(if (selected) WarnaBrand else WarnaCard)
+            .clickable(onClick = onClick)
+            .padding(horizontal = 16.dp, vertical = 8.dp)
+    )
+}
+
+private fun ikonPerangkat(perangkat: Perangkat): ImageVector =
+    when (perangkat.nama.uppercase()) {
+        "ROUTER" -> Icons.Default.Router
+        "AP1", "AP2" -> Icons.Default.Wifi
+        "CCTV" -> Icons.Default.CameraAlt
+        "SENSOR" -> Icons.Default.Thermostat
+        "SMART DOOR" -> Icons.Default.MeetingRoom
+        "SMART LAMP" -> Icons.Default.Lightbulb
+        "SMART PLUG" -> Icons.Default.Power
+        "PAKAN BURUNG" -> Icons.Default.Pets
+        else -> if (perangkat.kategori == "IoT") Icons.Default.Smartphone else Icons.Default.Wifi
+    }
+
+@Composable
+private fun KartuDeviceList(
+    perangkat: Perangkat,
+    onClick: () -> Unit,
+    onHapus: () -> Unit
+) {
+    val isOnline = perangkat.status == "ONLINE"
+    val warnaStatus = if (isOnline) WarnaHijau else WarnaMerah
+    val isIot = perangkat.kategori == "IoT"
+    val warnaKategori = if (isIot) WarnaHijau else WarnaBrand
+    val warnaLatency = when {
+        perangkat.latency == 0 -> WarnaMerah
+        perangkat.latency > 100 -> WarnaKuning
+        else -> WarnaHijau
+    }
+
+    Card(
+        onClick = onClick,
+        modifier = Modifier.fillMaxWidth().padding(vertical = 6.dp),
+        shape = RoundedCornerShape(20.dp),
+        elevation = CardDefaults.cardElevation(2.dp),
+        colors = CardDefaults.cardColors(containerColor = WarnaCard),
+        border = if (isOnline) null else BorderStroke(1.dp, WarnaMerah.copy(alpha = 0.35f))
+    ) {
+        Row(
+            modifier = Modifier.fillMaxWidth().padding(14.dp),
+            verticalAlignment = Alignment.CenterVertically
+        ) {
+            Box(
+                modifier = Modifier
+                    .size(48.dp)
+                    .clip(RoundedCornerShape(14.dp))
+                    .background(warnaKategori.copy(alpha = 0.12f)),
+                contentAlignment = Alignment.Center
+            ) {
+                Icon(ikonPerangkat(perangkat), contentDescription = null, tint = warnaKategori, modifier = Modifier.size(24.dp))
+            }
+            Spacer(modifier = Modifier.width(12.dp))
+
+            Column(modifier = Modifier.weight(1f)) {
+                Text(
+                    text = perangkat.nama,
+                    fontSize = 15.sp,
+                    fontWeight = FontWeight.Bold,
+                    color = WarnaTeksUtama,
+                    maxLines = 1,
+                    overflow = TextOverflow.Ellipsis
+                )
+                Text(text = perangkat.ip, fontSize = 12.sp, color = WarnaTeksDim)
+                Spacer(modifier = Modifier.height(6.dp))
+                Row(verticalAlignment = Alignment.CenterVertically) {
+                    Text(
+                        text = perangkat.kategori,
+                        fontSize = 10.sp,
+                        fontWeight = FontWeight.Bold,
+                        color = warnaKategori,
+                        modifier = Modifier
+                            .clip(RoundedCornerShape(6.dp))
+                            .background(warnaKategori.copy(alpha = 0.1f))
+                            .padding(horizontal = 6.dp, vertical = 2.dp)
+                    )
+                    Spacer(modifier = Modifier.width(8.dp))
+                    Box(modifier = Modifier.size(7.dp).clip(CircleShape).background(warnaLatency))
+                    Spacer(modifier = Modifier.width(4.dp))
+                    Text(
+                        text = if (perangkat.latency == 0) "Timeout" else "${perangkat.latency} ms",
+                        fontSize = 11.sp,
+                        color = warnaLatency,
+                        fontWeight = FontWeight.Medium
+                    )
+                }
+            }
+
+            Column(horizontalAlignment = Alignment.End) {
+                Text(
+                    text = if (isOnline) "Normal" else "Down",
+                    fontSize = 11.sp,
+                    color = warnaStatus,
+                    fontWeight = FontWeight.Bold,
+                    modifier = Modifier
+                        .clip(RoundedCornerShape(50))
+                        .background(warnaStatus.copy(alpha = 0.12f))
+                        .padding(horizontal = 10.dp, vertical = 4.dp)
+                )
+                Spacer(modifier = Modifier.height(4.dp))
+                IconButton(onClick = onHapus, modifier = Modifier.size(32.dp)) {
+                    Icon(Icons.Default.Delete, contentDescription = "Hapus", tint = WarnaTeksDim.copy(alpha = 0.7f), modifier = Modifier.size(18.dp))
+                }
             }
         }
     }
