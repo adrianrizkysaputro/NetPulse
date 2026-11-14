@@ -17,12 +17,15 @@ import androidx.compose.material3.*
 import androidx.compose.runtime.*
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.draw.clip
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.vector.ImageVector
 import androidx.compose.ui.platform.LocalContext
+import androidx.compose.ui.platform.LocalView
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
+import androidx.core.view.WindowCompat
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.GlobalScope
 import kotlinx.coroutines.launch
@@ -45,128 +48,134 @@ fun HalamanSettings(
     var showPasswordDialog by remember { mutableStateOf(false) }
     var showAboutDialog by remember { mutableStateOf(false) }
 
+    StatusBarIkonPutih()
+
     Column(
         modifier = Modifier
             .fillMaxSize()
-            .background(WarnaBg)
-            .padding(paddingValues)
-            .verticalScroll(rememberScrollState())
+            .padding(bottom = paddingValues.calculateBottomPadding())
     ) {
-        // --- Custom Header ---
-        Box(
+        // Teks header + avatar. Bar biru-nya digambar MainActivity di belakang (tingginya beranimasi antar tab)
+        Column(
             modifier = Modifier
                 .fillMaxWidth()
-                .padding(20.dp),
-            contentAlignment = Alignment.Center
+                .statusBarsPadding()
+                .height(200.dp)
+                .padding(top = 12.dp),
+            horizontalAlignment = Alignment.CenterHorizontally
         ) {
-            Column(horizontalAlignment = Alignment.CenterHorizontally) {
-                Surface(
-                    shape = CircleShape,
-                    color = Color(0xFF2563EB).copy(alpha = 0.1f),
-                    modifier = Modifier.size(80.dp)
-                ) {
-                    Box(contentAlignment = Alignment.Center) {
-                        Text(
-                            text = namaPengguna.take(1).uppercase(),
-                            fontSize = 32.sp,
-                            fontWeight = FontWeight.Bold,
-                            color = Color(0xFF2563EB)
-                        )
-                    }
+            Text("Pengaturan", color = Color.White, fontSize = 16.sp, fontWeight = FontWeight.Bold)
+            Spacer(modifier = Modifier.height(16.dp))
+            Surface(
+                shape = CircleShape,
+                color = Color.White,
+                shadowElevation = 6.dp,
+                modifier = Modifier.size(84.dp)
+            ) {
+                Box(contentAlignment = Alignment.Center) {
+                    Text(
+                        text = namaPengguna.take(1).uppercase(),
+                        fontSize = 34.sp,
+                        fontWeight = FontWeight.Bold,
+                        color = WarnaBrand
+                    )
                 }
-                Spacer(modifier = Modifier.height(12.dp))
-                Text(
-                    text = namaPengguna,
-                    fontSize = 20.sp,
-                    fontWeight = FontWeight.Bold,
-                    color = WarnaTeksUtama
-                )
-                Text(
-                    text = AppPrefs.getActiveUsername(context),
-                    fontSize = 14.sp,
-                    color = WarnaTeksDim
-                )
             }
-        }
-
-        // --- Sections ---
-        SettingsGroup(title = "Koneksi & Server") {
-            SettingsItem(
-                icon = Icons.Default.Dns,
-                title = "URL Server",
-                subtitle = serverUrl,
-                onClick = { showUrlDialog = true }
+            Spacer(modifier = Modifier.height(12.dp))
+            Text(namaPengguna, fontSize = 20.sp, fontWeight = FontWeight.Bold, color = Color.White)
+            Text(
+                "@" + AppPrefs.getActiveUsername(context),
+                fontSize = 14.sp,
+                color = Color.White.copy(alpha = 0.85f)
             )
         }
 
-        SettingsGroup(title = "Monitoring") {
-            val labelInterval = when (intervalScan) {
-                30 -> "30 detik"
-                60 -> "1 menit"
-                300 -> "5 menit"
-                600 -> "10 menit"
-                else -> "$intervalScan detik"
-            }
-            SettingsItem(
-                icon = Icons.Default.Speed,
-                title = "Interval Scan",
-                subtitle = labelInterval,
-                onClick = { showIntervalDialog = true }
-            )
-        }
-
-        SettingsGroup(title = "Akun & Keamanan") {
-            SettingsItem(
-                icon = Icons.Default.Person,
-                title = "Profil Pengguna",
-                subtitle = "Ubah nama tampilan",
-                onClick = { showProfileDialog = true }
-            )
-            SettingsItem(
-                icon = Icons.Default.Lock,
-                title = "Ganti Password",
-                subtitle = "Keamanan akun",
-                onClick = { showPasswordDialog = true }
-            )
-        }
-
-        SettingsGroup(title = "Aplikasi") {
-            SettingsItem(
-                icon = Icons.Default.Notifications,
-                title = "Notifikasi",
-                subtitle = if (fcmToken.isNotEmpty()) "Aktif" else "Menghubungkan...",
-                onClick = { /* Could show token info if needed */ }
-            )
-            SettingsItem(
-                icon = Icons.Default.Info,
-                title = "Tentang NetPulse",
-                subtitle = "Versi 1.0.0",
-                onClick = { showAboutDialog = true }
-            )
-        }
-
-        Spacer(modifier = Modifier.height(24.dp))
-        
-        // Logout Item
-        Surface(
+        Column(
             modifier = Modifier
-                .fillMaxWidth()
-                .clickable {
+                .weight(1f)
+                .verticalScroll(rememberScrollState())
+        ) {
+            // --- Sections ---
+            SettingsGroup(title = "Koneksi & Server") {
+                SettingsItem(
+                    icon = Icons.Default.Dns,
+                    title = "URL Server",
+                    subtitle = serverUrl,
+                    onClick = { showUrlDialog = true }
+                )
+            }
+
+            SettingsGroup(title = "Monitoring") {
+                val labelInterval = when (intervalScan) {
+                    30 -> "30 detik"
+                    60 -> "1 menit"
+                    300 -> "5 menit"
+                    600 -> "10 menit"
+                    else -> "$intervalScan detik"
+                }
+                SettingsItem(
+                    icon = Icons.Default.Speed,
+                    title = "Interval Scan",
+                    subtitle = labelInterval,
+                    onClick = { showIntervalDialog = true }
+                )
+            }
+
+            SettingsGroup(title = "Akun & Keamanan") {
+                SettingsItem(
+                    icon = Icons.Default.Person,
+                    title = "Profil Pengguna",
+                    subtitle = "Ubah nama tampilan",
+                    onClick = { showProfileDialog = true }
+                )
+                SettingsItem(
+                    icon = Icons.Default.Lock,
+                    title = "Ganti Password",
+                    subtitle = "Keamanan akun",
+                    onClick = { showPasswordDialog = true }
+                )
+            }
+
+            SettingsGroup(title = "Aplikasi") {
+                SettingsItem(
+                    icon = Icons.Default.Notifications,
+                    title = "Notifikasi",
+                    subtitle = if (fcmToken.isNotEmpty()) "Aktif" else "Menghubungkan...",
+                    onClick = { /* Could show token info if needed */ }
+                )
+                SettingsItem(
+                    icon = Icons.Default.Info,
+                    title = "Tentang NetPulse",
+                    subtitle = "Versi 1.0.0",
+                    onClick = { showAboutDialog = true }
+                )
+            }
+
+            Spacer(modifier = Modifier.height(24.dp))
+
+            // Keluar
+            Card(
+                onClick = {
                     AppPrefs.setLoggedIn(context, false)
                     (context as Activity).recreate()
                 },
-            color = WarnaCard
-        ) {
-            Row(
-                modifier = Modifier.padding(16.dp),
-                verticalAlignment = Alignment.CenterVertically
+                modifier = Modifier.fillMaxWidth().padding(horizontal = 16.dp),
+                shape = RoundedCornerShape(20.dp),
+                colors = CardDefaults.cardColors(containerColor = Color(0xFFFFEDED)),
+                elevation = CardDefaults.cardElevation(0.dp)
             ) {
-                Icon(Icons.AutoMirrored.Filled.Logout, contentDescription = null, tint = WarnaMerah)
-                Spacer(modifier = Modifier.width(16.dp))
-                Text("Keluar dari Akun", color = WarnaMerah, fontWeight = FontWeight.Bold)
+                Row(
+                    modifier = Modifier.fillMaxWidth().padding(16.dp),
+                    verticalAlignment = Alignment.CenterVertically,
+                    horizontalArrangement = Arrangement.Center
+                ) {
+                    Icon(Icons.AutoMirrored.Filled.Logout, contentDescription = null, tint = WarnaMerah)
+                    Spacer(modifier = Modifier.width(10.dp))
+                    Text("Keluar dari Akun", color = WarnaMerah, fontWeight = FontWeight.Bold)
+                }
             }
+            Spacer(modifier = Modifier.height(40.dp))
         }
-        Spacer(modifier = Modifier.height(40.dp))
     }
 
     // --- Dialogs ---
@@ -326,16 +335,32 @@ fun HalamanSettings(
 }
 
 @Composable
+fun StatusBarIkonPutih() {
+    val view = LocalView.current
+    DisposableEffect(Unit) {
+        val window = (view.context as? Activity)?.window
+        val controller = window?.let { WindowCompat.getInsetsController(it, view) }
+        controller?.isAppearanceLightStatusBars = false
+        onDispose { }
+    }
+}
+
+@Composable
 fun SettingsGroup(title: String, content: @Composable ColumnScope.() -> Unit) {
-    Column(modifier = Modifier.fillMaxWidth()) {
+    Column(modifier = Modifier.fillMaxWidth().padding(horizontal = 16.dp)) {
         Text(
             text = title,
             fontSize = 13.sp,
             fontWeight = FontWeight.Bold,
-            color = Color(0xFF2563EB),
-            modifier = Modifier.padding(start = 16.dp, top = 20.dp, bottom = 8.dp)
+            color = WarnaTeksDim,
+            modifier = Modifier.padding(start = 8.dp, top = 20.dp, bottom = 8.dp)
         )
-        Surface(color = WarnaCard, modifier = Modifier.fillMaxWidth()) {
+        Card(
+            modifier = Modifier.fillMaxWidth(),
+            shape = RoundedCornerShape(20.dp),
+            elevation = CardDefaults.cardElevation(2.dp),
+            colors = CardDefaults.cardColors(containerColor = WarnaCard)
+        ) {
             Column(content = content)
         }
     }
@@ -348,31 +373,47 @@ fun SettingsItem(
     subtitle: String,
     onClick: () -> Unit
 ) {
+    val warna = when (icon) {
+        Icons.Default.Dns -> Color(0xFF2563EB)
+        Icons.Default.Speed -> Color(0xFF8B5CF6)
+        Icons.Default.Person -> Color(0xFF06B6D4)
+        Icons.Default.Lock -> Color(0xFFF59E0B)
+        Icons.Default.Notifications -> Color(0xFF22C55E)
+        Icons.Default.Info -> Color(0xFF64748B)
+        else -> WarnaBrand
+    }
     Row(
         modifier = Modifier
             .fillMaxWidth()
             .clickable { onClick() }
-            .padding(16.dp),
+            .padding(horizontal = 16.dp, vertical = 14.dp),
         verticalAlignment = Alignment.CenterVertically
     ) {
         Box(
             modifier = Modifier
-                .size(36.dp)
-                .background(WarnaBg, CircleShape),
+                .size(42.dp)
+                .clip(RoundedCornerShape(12.dp))
+                .background(warna.copy(alpha = 0.12f)),
             contentAlignment = Alignment.Center
         ) {
-            Icon(icon, contentDescription = null, modifier = Modifier.size(20.dp), tint = WarnaTeksUtama)
+            Icon(icon, contentDescription = null, modifier = Modifier.size(22.dp), tint = warna)
         }
-        Spacer(modifier = Modifier.width(16.dp))
+        Spacer(modifier = Modifier.width(14.dp))
         Column(modifier = Modifier.weight(1f)) {
-            Text(text = title, fontSize = 15.sp, fontWeight = FontWeight.Medium, color = WarnaTeksUtama)
-            Text(text = subtitle, fontSize = 13.sp, color = WarnaTeksDim)
+            Text(text = title, fontSize = 15.sp, fontWeight = FontWeight.SemiBold, color = WarnaTeksUtama)
+            Text(
+                text = subtitle,
+                fontSize = 13.sp,
+                color = WarnaTeksDim,
+                maxLines = 1,
+                overflow = androidx.compose.ui.text.style.TextOverflow.Ellipsis
+            )
         }
         Icon(
             imageVector = Icons.AutoMirrored.Filled.ArrowForwardIos,
             contentDescription = null,
             modifier = Modifier.size(12.dp),
-            tint = WarnaBorder
+            tint = WarnaTeksDim.copy(alpha = 0.5f)
         )
     }
 }

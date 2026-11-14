@@ -1,11 +1,30 @@
 package com.example.myapplication
 
 import android.Manifest
+import android.app.Activity
 import android.content.pm.PackageManager
 import android.os.Build
 import android.os.Bundle
 import androidx.activity.ComponentActivity
 import androidx.activity.compose.setContent
+import androidx.compose.animation.AnimatedContent
+import androidx.compose.animation.core.FastOutSlowInEasing
+import androidx.compose.animation.core.animateDpAsState
+import androidx.compose.animation.core.tween
+import androidx.compose.animation.fadeIn
+import androidx.compose.animation.fadeOut
+import androidx.compose.animation.slideInHorizontally
+import androidx.compose.animation.slideOutHorizontally
+import androidx.compose.animation.togetherWith
+import androidx.compose.foundation.background
+import androidx.compose.foundation.layout.Box
+import androidx.compose.foundation.layout.WindowInsets
+import androidx.compose.foundation.layout.asPaddingValues
+import androidx.compose.foundation.layout.fillMaxSize
+import androidx.compose.foundation.layout.fillMaxWidth
+import androidx.compose.foundation.layout.height
+import androidx.compose.foundation.layout.statusBars
+import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.ExperimentalMaterialApi
 import androidx.compose.runtime.*
 import androidx.core.app.ActivityCompat
@@ -26,7 +45,11 @@ import androidx.compose.material.icons.filled.Home
 import androidx.compose.material.icons.filled.History
 import androidx.compose.material.icons.filled.Settings
 import androidx.compose.material.icons.automirrored.filled.List
+import androidx.compose.ui.Modifier
+import androidx.compose.ui.graphics.Brush
 import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.platform.LocalView
+import androidx.core.view.WindowCompat
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import com.example.myapplication.ui.theme.MyApplicationTheme
@@ -54,7 +77,7 @@ class MainActivity : ComponentActivity() {
                 val context = androidx.compose.ui.platform.LocalContext.current
                 var isLoggedIn by remember { mutableStateOf(AppPrefs.isLoggedIn(context)) }
                 var fcmToken by remember { mutableStateOf("") }
-                
+
                 LaunchedEffect(Unit) {
                     RetrofitClient.BASE_URL = AppPrefs.getServerUrl(context)
 
@@ -202,7 +225,7 @@ class MainActivity : ComponentActivity() {
                             }
                         }
                     ) { paddingValues ->
-                        
+
                         LaunchedEffect(Unit) {
                             while (true) {
                                 try {
@@ -216,33 +239,83 @@ class MainActivity : ComponentActivity() {
                             }
                         }
 
-                        when (selectedTab) {
-                            0 -> HalamanDashboard(
-                                devices = devices,
-                                logAktivitas = logAktivitas,
-                                diagnosisJaringan = diagnosisJaringan,
-                                isLoading = isLoading,
-                                isScanning = isScanning,
-                                errorMsg = errorMsg,
-                                onRefresh = { isScanning = true },
-                                paddingValues = paddingValues
+                        // Ikon status bar: gelap hanya di tab History (belum bergradient)
+                        val view = LocalView.current
+                        SideEffect {
+                            val window = (view.context as? Activity)?.window
+                            if (window != null) {
+                                WindowCompat.getInsetsController(window, view).isAppearanceLightStatusBars = (selectedTab == 2)
+                            }
+                        }
+
+                        // Tinggi bar biru per tab (di bawah status bar). History = 0 (belum bergradient)
+                        val tinggiStatusBar = WindowInsets.statusBars.asPaddingValues().calculateTopPadding()
+                        val targetTinggiBar = when (selectedTab) {
+                            0 -> 200.dp + tinggiStatusBar   // Dashboard
+                            1 -> 108.dp + tinggiStatusBar   // Device
+                            3 -> 216.dp + tinggiStatusBar   // Settings
+                            else -> 0.dp                    // History
+                        }
+                        val tinggiBar by animateDpAsState(
+                            targetValue = targetTinggiBar,
+                            animationSpec = tween(450, easing = FastOutSlowInEasing),
+                            label = "tinggiBar"
+                        )
+
+                        Box(modifier = Modifier.fillMaxSize().background(WarnaBg)) {
+                            // Satu bar biru untuk semua tab -> tingginya berubah ("morph") saat pindah tab
+                            Box(
+                                modifier = Modifier
+                                    .fillMaxWidth()
+                                    .height(tinggiBar)
+                                    .background(
+                                        Brush.linearGradient(listOf(WarnaBrand, WarnaBrandAkhir)),
+                                        RoundedCornerShape(bottomStart = 32.dp, bottomEnd = 32.dp)
+                                    )
                             )
-                            1 -> HalamanDevice(
-                                devices = devices,
-                                searchQuery = searchQuery,
-                                onSearchQueryChange = { searchQuery = it },
-                                paddingValues = paddingValues,
-                                onFetchDevices = { fetchDevices() }
-                            )
-                            2 -> HalamanHistory(
-                                logAktivitas = logAktivitas,
-                                paddingValues = paddingValues,
-                                onFetchDevices = { fetchDevices() }
-                            )
-                            3 -> HalamanSettings(
-                                fcmToken = fcmToken,
-                                paddingValues = paddingValues
-                            )
+
+                            // Transisi antar tab: geser tipis + fade, arah mengikuti posisi tab
+                            AnimatedContent(
+                                targetState = selectedTab,
+                                transitionSpec = {
+                                    val arah = if (targetState > initialState) 1 else -1
+                                    (slideInHorizontally(tween(300)) { it / 8 * arah } + fadeIn(tween(300)))
+                                        .togetherWith(
+                                            slideOutHorizontally(tween(300)) { -it / 8 * arah } + fadeOut(tween(150))
+                                        )
+                                },
+                                label = "tab"
+                            ) { tab ->
+                                when (tab) {
+                                    0 -> HalamanDashboard(
+                                        devices = devices,
+                                        logAktivitas = logAktivitas,
+                                        diagnosisJaringan = diagnosisJaringan,
+                                        isLoading = isLoading,
+                                        isScanning = isScanning,
+                                        errorMsg = errorMsg,
+                                        onRefresh = { isScanning = true },
+                                        paddingValues = paddingValues,
+                                        onTambahDevice = { selectedTab = 1 }
+                                    )
+                                    1 -> HalamanDevice(
+                                        devices = devices,
+                                        searchQuery = searchQuery,
+                                        onSearchQueryChange = { searchQuery = it },
+                                        paddingValues = paddingValues,
+                                        onFetchDevices = { fetchDevices() }
+                                    )
+                                    2 -> HalamanHistory(
+                                        logAktivitas = logAktivitas,
+                                        paddingValues = paddingValues,
+                                        onFetchDevices = { fetchDevices() }
+                                    )
+                                    3 -> HalamanSettings(
+                                        fcmToken = fcmToken,
+                                        paddingValues = paddingValues
+                                    )
+                                }
+                            }
                         }
                     }
                 }

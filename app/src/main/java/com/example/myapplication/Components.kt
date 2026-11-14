@@ -28,12 +28,14 @@ import kotlin.random.Random
 
 val WarnaHijau      = Color(0xFF22C55E)
 val WarnaMerah      = Color(0xFFEF4444)
-val WarnaBg         = Color(0xFFF8FAFC)
+val WarnaBg         = Color(0xFFF1F6FB)
 val WarnaTeksDim    = Color(0xFF64748B)
 val WarnaTeksUtama  = Color(0xFF1E293B)
 val WarnaKuning     = Color(0xFFF59E0B)
 val WarnaCard       = Color(0xFFFFFFFF)
 val WarnaBorder     = Color(0xFFE2E8F0)
+val WarnaBrand      = Color(0xFF2563EB)
+val WarnaBrandAkhir = Color(0xFF06B6D4)
 
 data class Perangkat(
     val id: Int = 0,
@@ -65,6 +67,26 @@ fun InfoText(teks: String) {
         color = WarnaTeksDim,
         textAlign = TextAlign.Start,
         modifier = Modifier.fillMaxWidth()
+    )
+}
+
+/** Header gradient reusable untuk semua tab. Isi (judul, sapaan, dll) dikirim lewat content. */
+@Composable
+fun GradientHeader(
+    modifier: Modifier = Modifier,
+    bottomPadding: androidx.compose.ui.unit.Dp = 24.dp,
+    content: @Composable ColumnScope.() -> Unit
+) {
+    Column(
+        modifier = modifier
+            .fillMaxWidth()
+            .background(
+                androidx.compose.ui.graphics.Brush.linearGradient(listOf(WarnaBrand, WarnaBrandAkhir)),
+                RoundedCornerShape(bottomStart = 32.dp, bottomEnd = 32.dp)
+            )
+            .statusBarsPadding()
+            .padding(start = 20.dp, end = 20.dp, top = 12.dp, bottom = bottomPadding),
+        content = content
     )
 }
 
@@ -178,12 +200,12 @@ fun KartuPerangkat(perangkat: Perangkat) {
         modifier = Modifier
             .fillMaxWidth()
             .padding(vertical = 4.dp),
-        shape = RoundedCornerShape(12.dp),
-        elevation = CardDefaults.cardElevation(1.dp),
+        shape = RoundedCornerShape(16.dp),
+        elevation = CardDefaults.cardElevation(2.dp),
         colors = CardDefaults.cardColors(containerColor = WarnaCard),
         onClick = { isExpanded = !isExpanded }
     ) {
-        Column(modifier = Modifier.padding(10.dp)) {
+        Column(modifier = Modifier.padding(12.dp)) {
             Row(
                 modifier = Modifier.fillMaxWidth(),
                 horizontalArrangement = Arrangement.SpaceBetween,
