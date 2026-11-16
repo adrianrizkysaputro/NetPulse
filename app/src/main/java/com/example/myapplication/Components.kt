@@ -15,6 +15,7 @@ import androidx.compose.material3.*
 import androidx.compose.runtime.*
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.draw.clip
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.vector.ImageVector
 import androidx.compose.ui.text.SpanStyle
@@ -67,6 +68,128 @@ fun InfoText(teks: String) {
         color = WarnaTeksDim,
         textAlign = TextAlign.Start,
         modifier = Modifier.fillMaxWidth()
+    )
+}
+
+/** Dialog seragam NetPulse: ikon di lingkaran, judul, deskripsi, isi bebas, tombol Batal + aksi. */
+@Composable
+fun DialogNetPulse(
+    onDismiss: () -> Unit,
+    icon: ImageVector,
+    judul: String,
+    deskripsi: String? = null,
+    warna: Color = WarnaBrand,
+    teksAksi: String? = null,          // null = tanpa tombol aksi (mis. dialog pilihan)
+    warnaAksi: Color = warna,
+    aksiAktif: Boolean = true,
+    onAksi: () -> Unit = {},
+    teksBatal: String = "Batal",
+    content: @Composable ColumnScope.() -> Unit = {}
+) {
+    androidx.compose.ui.window.Dialog(onDismissRequest = onDismiss) {
+        Card(
+            shape = RoundedCornerShape(28.dp),
+            colors = CardDefaults.cardColors(containerColor = WarnaCard),
+            elevation = CardDefaults.cardElevation(12.dp)
+        ) {
+            Column(
+                modifier = Modifier
+                    .padding(24.dp)
+                    .verticalScroll(rememberScrollState()),
+                horizontalAlignment = Alignment.CenterHorizontally
+            ) {
+                Box(
+                    modifier = Modifier.size(64.dp).clip(CircleShape).background(warna.copy(alpha = 0.12f)),
+                    contentAlignment = Alignment.Center
+                ) {
+                    Icon(icon, contentDescription = null, tint = warna, modifier = Modifier.size(30.dp))
+                }
+                Spacer(modifier = Modifier.height(16.dp))
+                Text(judul, fontSize = 18.sp, fontWeight = FontWeight.Bold, color = WarnaTeksUtama, textAlign = TextAlign.Center)
+                if (deskripsi != null) {
+                    Spacer(modifier = Modifier.height(6.dp))
+                    Text(deskripsi, fontSize = 13.sp, color = WarnaTeksDim, textAlign = TextAlign.Center)
+                }
+                Spacer(modifier = Modifier.height(16.dp))
+                Column(modifier = Modifier.fillMaxWidth(), content = content)
+                Spacer(modifier = Modifier.height(20.dp))
+                Row(
+                    modifier = Modifier.fillMaxWidth(),
+                    horizontalArrangement = Arrangement.spacedBy(10.dp)
+                ) {
+                    Box(
+                        modifier = Modifier
+                            .weight(1f)
+                            .clip(RoundedCornerShape(14.dp))
+                            .background(WarnaBg)
+                            .clickable { onDismiss() }
+                            .padding(vertical = 13.dp),
+                        contentAlignment = Alignment.Center
+                    ) {
+                        Text(teksBatal, fontSize = 14.sp, color = WarnaTeksDim, fontWeight = FontWeight.Bold)
+                    }
+                    if (teksAksi != null) {
+                        Box(
+                            modifier = Modifier
+                                .weight(1f)
+                                .clip(RoundedCornerShape(14.dp))
+                                .background(if (aksiAktif) warnaAksi else warnaAksi.copy(alpha = 0.35f))
+                                .clickable(enabled = aksiAktif) { onAksi() }
+                                .padding(vertical = 13.dp),
+                            contentAlignment = Alignment.Center
+                        ) {
+                            Text(teksAksi, fontSize = 14.sp, color = Color.White, fontWeight = FontWeight.Bold)
+                        }
+                    }
+                }
+            }
+        }
+    }
+}
+
+/** Kolom input seragam NetPulse (sudut 14dp, fokus biru). */
+@Composable
+fun FieldNetPulse(
+    value: String,
+    onValueChange: (String) -> Unit,
+    label: String,
+    placeholder: String? = null,
+    password: Boolean = false,
+    modifier: Modifier = Modifier,
+    leadingIcon: ImageVector? = null,
+    showPassword: Boolean = false,                 // dipakai bersama onToggleShow untuk ikon mata
+    onToggleShow: (() -> Unit)? = null
+) {
+    OutlinedTextField(
+        value = value,
+        onValueChange = onValueChange,
+        label = { Text(label, fontSize = 13.sp) },
+        placeholder = if (placeholder != null) {
+            { Text(placeholder, fontSize = 13.sp, color = WarnaTeksDim) }
+        } else null,
+        leadingIcon = if (leadingIcon != null) {
+            { Icon(leadingIcon, contentDescription = null, tint = WarnaTeksDim, modifier = Modifier.size(20.dp)) }
+        } else null,
+        trailingIcon = if (password && onToggleShow != null) {
+            {
+                Icon(
+                    imageVector = if (showPassword) Icons.Default.Visibility else Icons.Default.VisibilityOff,
+                    contentDescription = null,
+                    tint = WarnaTeksDim,
+                    modifier = Modifier.size(20.dp).clickable { onToggleShow() }
+                )
+            }
+        } else null,
+        visualTransformation = if (password && !showPassword) androidx.compose.ui.text.input.PasswordVisualTransformation()
+        else androidx.compose.ui.text.input.VisualTransformation.None,
+        modifier = modifier.fillMaxWidth(),
+        shape = RoundedCornerShape(14.dp),
+        singleLine = true,
+        colors = OutlinedTextFieldDefaults.colors(
+            focusedBorderColor = WarnaBrand,
+            unfocusedBorderColor = WarnaBorder,
+            focusedLabelColor = WarnaBrand
+        )
     )
 }
 

@@ -6,6 +6,7 @@ import androidx.compose.foundation.border
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.rememberScrollState
+import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.foundation.verticalScroll
 import androidx.compose.material.icons.Icons
@@ -14,6 +15,8 @@ import androidx.compose.material3.*
 import androidx.compose.runtime.*
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.draw.clip
+import androidx.compose.ui.draw.shadow
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.text.font.FontWeight
@@ -30,7 +33,8 @@ import kotlinx.coroutines.withContext
 fun HalamanHistory(
     logAktivitas: List<AktivitasLog>,
     paddingValues: PaddingValues,
-    onFetchDevices: suspend () -> Unit
+    onFetchDevices: suspend () -> Unit,
+    onKeDashboard: () -> Unit = {}   // opsional: tombol di empty state
 ) {
     val context = LocalContext.current
     var filterDevice by remember { mutableStateOf("Semua") }
@@ -55,182 +59,145 @@ fun HalamanHistory(
     }
 
     if (showDialogHapusHistory) {
-        androidx.compose.ui.window.Dialog(
-            onDismissRequest = { showDialogHapusHistory = false }
-        ) {
-            Card(
-                shape = RoundedCornerShape(16.dp),
-                colors = CardDefaults.cardColors(containerColor = WarnaCard),
-                elevation = CardDefaults.cardElevation(8.dp)
-            ) {
-                Column(modifier = Modifier.padding(20.dp)) {
-                    Text(
-                        text = "Hapus Semua History",
-                        fontSize = 18.sp,
-                        fontWeight = FontWeight.Bold,
-                        color = WarnaTeksUtama
-                    )
-                    Spacer(modifier = Modifier.height(8.dp))
-                    Text(
-                        text = "Semua history aktivitas akan dihapus permanen. Lanjutkan?",
-                        fontSize = 14.sp,
-                        color = WarnaTeksDim
-                    )
-                    Spacer(modifier = Modifier.height(20.dp))
-                    Row(
-                        modifier = Modifier.fillMaxWidth(),
-                        horizontalArrangement = Arrangement.spacedBy(8.dp)
-                    ) {
-                        Box(
-                            modifier = Modifier
-                                .weight(1f)
-                                .clickable { showDialogHapusHistory = false }
-                                .background(WarnaBg, RoundedCornerShape(12.dp))
-                                .padding(vertical = 12.dp),
-                            contentAlignment = Alignment.Center
-                        ) {
-                            Text("Batal", fontSize = 14.sp, color = WarnaTeksDim, fontWeight = FontWeight.Bold)
+        DialogNetPulse(
+            onDismiss = { showDialogHapusHistory = false },
+            icon = Icons.Default.DeleteSweep,
+            judul = "Hapus Semua History?",
+            deskripsi = "Semua history aktivitas akan dihapus permanen.",
+            warna = WarnaMerah,
+            teksAksi = "Hapus Semua",
+            onAksi = {
+                @Suppress("OPT_IN_USAGE")
+                GlobalScope.launch {
+                    try {
+                        val username = AppPrefs.getActiveUsername(context)
+                        RetrofitClient.instance.hapusSemuaLog(username)
+                        onFetchDevices()
+                        withContext(Dispatchers.Main) {
+                            Toast.makeText(context, "✅ History berhasil dihapus", Toast.LENGTH_SHORT).show()
                         }
-                        Box(
-                            modifier = Modifier
-                                .weight(1f)
-                                .clickable {
-                                    @Suppress("OPT_IN_USAGE")
-                                    GlobalScope.launch {
-                                        try {
-                                            val username = AppPrefs.getActiveUsername(context)
-                                            RetrofitClient.instance.hapusSemuaLog(username)
-                                            onFetchDevices()
-                                            withContext(Dispatchers.Main) {
-                                                Toast.makeText(context, "✅ History berhasil dihapus", Toast.LENGTH_SHORT).show()
-                                            }
-                                        } catch (e: Exception) {
-                                            withContext(Dispatchers.Main) {
-                                                Toast.makeText(context, "❌ Gagal hapus history", Toast.LENGTH_SHORT).show()
-                                            }
-                                        }
-                                    }
-                                    showDialogHapusHistory = false
-                                }
-                                .background(WarnaMerah, RoundedCornerShape(12.dp))
-                                .padding(vertical = 12.dp),
-                            contentAlignment = Alignment.Center
-                        ) {
-                            Text("Hapus Semua", fontSize = 14.sp, color = Color.White, fontWeight = FontWeight.Bold)
+                    } catch (e: Exception) {
+                        withContext(Dispatchers.Main) {
+                            Toast.makeText(context, "❌ Gagal hapus history", Toast.LENGTH_SHORT).show()
                         }
                     }
                 }
+                showDialogHapusHistory = false
             }
-        }
+        )
     }
+
+    val filterAktif = filterDevice != "Semua" || filterTanggal != "Semua"
 
     Column(
         modifier = Modifier
             .fillMaxSize()
-            .background(WarnaBg)
-            .padding(paddingValues)
-            .padding(horizontal = 16.dp)
+            .padding(bottom = paddingValues.calculateBottomPadding())
     ) {
-        // Header
+        // Teks header. Bar biru-nya digambar MainActivity di belakang (tingginya beranimasi antar tab)
         Row(
             modifier = Modifier
                 .fillMaxWidth()
-                .padding(vertical = 8.dp),
-            horizontalArrangement = Arrangement.SpaceBetween,
-            verticalAlignment = Alignment.CenterVertically
+                .statusBarsPadding()
+                .height(84.dp)
+                .padding(top = 12.dp, start = 20.dp, end = 20.dp),
+            verticalAlignment = Alignment.Top
         ) {
-            Text("History", color = WarnaTeksUtama, fontSize = 20.sp, fontWeight = FontWeight.Bold)
-            Box(
-                modifier = Modifier
-                    .clickable { showDialogHapusHistory = true }
-                    .background(WarnaMerah.copy(alpha = 0.1f), RoundedCornerShape(8.dp))
-                    .padding(horizontal = 12.dp, vertical = 6.dp)
-            ) {
-                Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(4.dp)) {
-                    Icon(Icons.Default.DeleteSweep, contentDescription = null, tint = WarnaMerah, modifier = Modifier.size(14.dp))
-                    Text("Hapus Semua", fontSize = 12.sp, color = WarnaMerah, fontWeight = FontWeight.Bold)
+            Column(modifier = Modifier.weight(1f)) {
+                Text("History", color = Color.White, fontSize = 24.sp, fontWeight = FontWeight.Bold)
+                Text(
+                    text = when {
+                        logAktivitas.isEmpty() -> "Belum ada aktivitas"
+                        filterAktif || searchHistory.isNotEmpty() -> "${filteredLog.size} dari ${logAktivitas.size} aktivitas"
+                        else -> "${logAktivitas.size} aktivitas tercatat"
+                    },
+                    color = Color.White.copy(alpha = 0.85f),
+                    fontSize = 13.sp
+                )
+            }
+            if (logAktivitas.isNotEmpty()) {
+                Row(
+                    modifier = Modifier
+                        .padding(top = 4.dp)
+                        .clip(RoundedCornerShape(14.dp))
+                        .background(Color.White.copy(alpha = 0.2f))
+                        .clickable { showDialogHapusHistory = true }
+                        .padding(horizontal = 12.dp, vertical = 9.dp),
+                    verticalAlignment = Alignment.CenterVertically
+                ) {
+                    Icon(Icons.Default.DeleteSweep, contentDescription = null, tint = Color.White, modifier = Modifier.size(16.dp))
+                    Spacer(modifier = Modifier.width(4.dp))
+                    Text("Hapus Semua", color = Color.White, fontSize = 12.sp, fontWeight = FontWeight.Bold)
                 }
             }
         }
 
+        // Search + tombol filter (menimpa tepi bar biru)
         Box(
             modifier = Modifier
                 .fillMaxWidth()
+                .padding(horizontal = 16.dp)
                 .zIndex(1f)
         ) {
             Row(
                 modifier = Modifier.fillMaxWidth(),
-                horizontalArrangement = Arrangement.spacedBy(8.dp),
+                horizontalArrangement = Arrangement.spacedBy(10.dp),
                 verticalAlignment = Alignment.CenterVertically
             ) {
-                // Search bar
-                Box(
-                    modifier = Modifier
-                        .weight(1f)
-                        .height(48.dp)
-                        .border(1.dp, WarnaBorder, RoundedCornerShape(12.dp))
-                        .background(WarnaCard, RoundedCornerShape(12.dp)),
-                    contentAlignment = Alignment.CenterStart
+                Card(
+                    modifier = Modifier.weight(1f).height(48.dp),
+                    shape = RoundedCornerShape(16.dp),
+                    elevation = CardDefaults.cardElevation(6.dp),
+                    colors = CardDefaults.cardColors(containerColor = WarnaCard)
                 ) {
-                    androidx.compose.foundation.text.BasicTextField(
-                        value = searchHistory,
-                        onValueChange = { searchHistory = it },
-                        singleLine = true,
-                        textStyle = androidx.compose.ui.text.TextStyle(
-                            fontSize = 13.sp,
-                            color = WarnaTeksUtama
-                        ),
-                        decorationBox = { innerTextField: @Composable () -> Unit ->
-                            Row(
-                                modifier = Modifier
-                                    .fillMaxSize()
-                                    .padding(horizontal = 12.dp),
-                                verticalAlignment = Alignment.CenterVertically,
-                                horizontalArrangement = Arrangement.spacedBy(8.dp)
-                            ) {
-                                Icon(Icons.Default.Search, contentDescription = null, tint = WarnaTeksDim, modifier = Modifier.size(16.dp))
-                                Box(modifier = Modifier.weight(1f)) {
-                                    if (searchHistory.isEmpty()) {
-                                        Text("Cari aktivitas...", fontSize = 13.sp, color = WarnaTeksDim)
+                    Box(modifier = Modifier.fillMaxSize(), contentAlignment = Alignment.CenterStart) {
+                        androidx.compose.foundation.text.BasicTextField(
+                            value = searchHistory,
+                            onValueChange = { searchHistory = it },
+                            singleLine = true,
+                            textStyle = androidx.compose.ui.text.TextStyle(fontSize = 14.sp, color = WarnaTeksUtama),
+                            decorationBox = { innerTextField: @Composable () -> Unit ->
+                                Row(
+                                    modifier = Modifier.fillMaxSize().padding(horizontal = 14.dp),
+                                    verticalAlignment = Alignment.CenterVertically,
+                                    horizontalArrangement = Arrangement.spacedBy(8.dp)
+                                ) {
+                                    Icon(Icons.Default.Search, contentDescription = null, tint = WarnaTeksDim, modifier = Modifier.size(18.dp))
+                                    Box(modifier = Modifier.weight(1f)) {
+                                        if (searchHistory.isEmpty()) {
+                                            Text("Cari aktivitas...", fontSize = 14.sp, color = WarnaTeksDim)
+                                        }
+                                        innerTextField()
                                     }
-                                    innerTextField()
-                                }
-                                if (searchHistory.isNotEmpty()) {
-                                    Icon(
-                                        imageVector = Icons.Default.Close,
-                                        contentDescription = "Hapus",
-                                        tint = WarnaTeksDim,
-                                        modifier = Modifier.size(16.dp).clickable { searchHistory = "" }
-                                    )
+                                    if (searchHistory.isNotEmpty()) {
+                                        Icon(
+                                            imageVector = Icons.Default.Close,
+                                            contentDescription = "Hapus",
+                                            tint = WarnaTeksDim,
+                                            modifier = Modifier.size(18.dp).clickable { searchHistory = "" }
+                                        )
+                                    }
                                 }
                             }
-                        }
-                    )
+                        )
+                    }
                 }
 
-                // Tombol filter kecil
+                // Tombol filter
                 Box(
                     modifier = Modifier
-                        .size(44.dp)
-                        .background(
-                            if (filterDevice != "Semua" || filterTanggal != "Semua")
-                                Color(0xFF2563EB) else WarnaCard,
-                            RoundedCornerShape(12.dp)
-                        )
-                        .border(
-                            1.dp,
-                            if (filterDevice != "Semua" || filterTanggal != "Semua")
-                                Color(0xFF2563EB) else WarnaBorder,
-                            RoundedCornerShape(12.dp)
-                        )
+                        .size(48.dp)
+                        .shadow(6.dp, RoundedCornerShape(16.dp))
+                        .clip(RoundedCornerShape(16.dp))
+                        .background(if (filterAktif) WarnaBrand else WarnaCard)
                         .clickable { showFilterDropdown = !showFilterDropdown },
                     contentAlignment = Alignment.Center
                 ) {
                     Icon(
                         imageVector = Icons.Default.FilterList,
                         contentDescription = "Filter",
-                        tint = if (filterDevice != "Semua" || filterTanggal != "Semua") Color.White else WarnaTeksUtama,
-                        modifier = Modifier.size(20.dp)
+                        tint = if (filterAktif) Color.White else WarnaTeksUtama,
+                        modifier = Modifier.size(22.dp)
                     )
                 }
             }
@@ -239,7 +206,10 @@ fun HalamanHistory(
             if (showFilterDropdown) {
                 androidx.compose.ui.window.Popup(
                     alignment = Alignment.TopEnd,
-                    offset = androidx.compose.ui.unit.IntOffset(0, 130)
+                    offset = androidx.compose.ui.unit.IntOffset(
+                        0,
+                        with(androidx.compose.ui.platform.LocalDensity.current) { 56.dp.roundToPx() }
+                    )
                 ) {
                     Card(
                         modifier = Modifier.width(220.dp),
@@ -264,7 +234,7 @@ fun HalamanHistory(
                                         modifier = Modifier
                                             .clickable { filterDevice = d }
                                             .background(
-                                                if (dipilih) Color(0xFF2563EB) else WarnaBg,
+                                                if (dipilih) WarnaBrand else WarnaBg,
                                                 RoundedCornerShape(20.dp)
                                             )
                                             .padding(horizontal = 10.dp, vertical = 5.dp)
@@ -300,7 +270,7 @@ fun HalamanHistory(
                                         modifier = Modifier
                                             .clickable { filterTanggal = t }
                                             .background(
-                                                if (dipilih) Color(0xFF2563EB) else WarnaBg,
+                                                if (dipilih) WarnaBrand else WarnaBg,
                                                 RoundedCornerShape(20.dp)
                                             )
                                             .padding(horizontal = 10.dp, vertical = 5.dp)
@@ -343,59 +313,51 @@ fun HalamanHistory(
         Spacer(modifier = Modifier.height(8.dp))
 
         // Info jumlah hasil filter
-        if (filterDevice != "Semua" || filterTanggal != "Semua") {
+        if (filterAktif) {
             Text(
                 text = "Menampilkan ${filteredLog.size} aktivitas",
                 fontSize = 12.sp,
                 color = WarnaTeksDim,
-                modifier = Modifier.padding(bottom = 4.dp)
+                modifier = Modifier.padding(start = 20.dp, bottom = 4.dp)
             )
         }
 
         if (logAktivitas.isEmpty()) {
-            Box(modifier = Modifier.fillMaxSize(), contentAlignment = Alignment.Center) {
+            Box(modifier = Modifier.fillMaxWidth().weight(1f), contentAlignment = Alignment.Center) {
                 Column(
                     horizontalAlignment = Alignment.CenterHorizontally,
-                    verticalArrangement = Arrangement.spacedBy(8.dp),
-                    modifier = Modifier.padding(32.dp)
+                    modifier = Modifier.padding(horizontal = 32.dp)
                 ) {
-                    Icon(Icons.Default.History, contentDescription = null, tint = WarnaTeksDim, modifier = Modifier.size(64.dp))
-                    Spacer(modifier = Modifier.height(8.dp))
+                    Box(
+                        modifier = Modifier.size(88.dp).clip(CircleShape).background(WarnaBrand.copy(alpha = 0.1f)),
+                        contentAlignment = Alignment.Center
+                    ) {
+                        Icon(Icons.Default.History, contentDescription = null, tint = WarnaBrand, modifier = Modifier.size(44.dp))
+                    }
+                    Spacer(modifier = Modifier.height(16.dp))
+                    Text("Belum Ada Riwayat", fontSize = 17.sp, fontWeight = FontWeight.Bold, color = WarnaTeksUtama)
+                    Spacer(modifier = Modifier.height(4.dp))
                     Text(
-                        text = "Belum Ada Riwayat",
-                        fontSize = 18.sp,
-                        fontWeight = FontWeight.Bold,
-                        color = WarnaTeksUtama
-                    )
-                    Text(
-                        text = "Riwayat aktivitas jaringan kamu\nakan muncul di sini",
-                        fontSize = 14.sp,
+                        text = "Riwayat aktivitas jaringan kamu\nakan muncul di sini.",
+                        fontSize = 13.sp,
                         color = WarnaTeksDim,
                         textAlign = TextAlign.Center
                     )
-                    Spacer(modifier = Modifier.height(8.dp))
-                    Box(
-                        modifier = Modifier
-                            .background(Color(0xFF2563EB).copy(alpha = 0.1f), RoundedCornerShape(12.dp))
-                            .padding(horizontal = 16.dp, vertical = 10.dp)
+                    Spacer(modifier = Modifier.height(20.dp))
+                    Button(
+                        onClick = onKeDashboard,
+                        shape = RoundedCornerShape(16.dp),
+                        colors = ButtonDefaults.buttonColors(containerColor = WarnaBrand)
                     ) {
-                        Row(
-                            verticalAlignment = Alignment.CenterVertically,
-                            horizontalArrangement = Arrangement.spacedBy(6.dp)
-                        ) {
-                            Icon(Icons.Default.Lightbulb, contentDescription = null, tint = Color(0xFF2563EB), modifier = Modifier.size(16.dp))
-                            Text(
-                                text = "Tekan 'Cek Semua Jaringan'\ndi tab Dashboard",
-                                fontSize = 13.sp,
-                                color = Color(0xFF2563EB),
-                                fontWeight = FontWeight.Bold
-                            )
-                        }
+                        Icon(Icons.Default.Radar, contentDescription = null, modifier = Modifier.size(18.dp))
+                        Spacer(modifier = Modifier.width(6.dp))
+                        Text("Ke Dashboard untuk cek jaringan", fontWeight = FontWeight.SemiBold)
                     }
+                    Spacer(modifier = Modifier.height(60.dp))
                 }
             }
         } else if (filteredLog.isEmpty()) {
-            Box(modifier = Modifier.fillMaxSize(), contentAlignment = Alignment.Center) {
+            Box(modifier = Modifier.fillMaxWidth().weight(1f), contentAlignment = Alignment.Center) {
                 Column(horizontalAlignment = Alignment.CenterHorizontally) {
                     Icon(Icons.Default.SearchOff, contentDescription = null, tint = WarnaTeksDim, modifier = Modifier.size(48.dp))
                     Spacer(modifier = Modifier.height(8.dp))
@@ -405,6 +367,7 @@ fun HalamanHistory(
                         color = WarnaTeksDim,
                         textAlign = TextAlign.Center
                     )
+                    Spacer(modifier = Modifier.height(60.dp))
                 }
             }
         } else {
@@ -417,7 +380,12 @@ fun HalamanHistory(
                 calendar.get(java.util.Calendar.YEAR)
             )
             val groupedLog = filteredLog.groupBy { it.tanggal }
-            Column(modifier = Modifier.weight(1f).verticalScroll(rememberScrollState())) {
+            Column(
+                modifier = Modifier
+                    .weight(1f)
+                    .verticalScroll(rememberScrollState())
+                    .padding(horizontal = 16.dp)
+            ) {
                 groupedLog.forEach { (tanggal, logs) ->
                     val labelTanggal = when (tanggal) {
                         today -> "Hari Ini"
@@ -429,12 +397,12 @@ fun HalamanHistory(
                         text = labelTanggal,
                         fontSize = 14.sp,
                         fontWeight = FontWeight.Bold,
-                        color = Color(0xFF2563EB),
-                        modifier = Modifier.padding(vertical = 4.dp)
+                        color = WarnaBrand,
+                        modifier = Modifier.padding(start = 4.dp, top = 4.dp, bottom = 6.dp)
                     )
                     Card(
                         modifier = Modifier.fillMaxWidth(),
-                        shape = RoundedCornerShape(16.dp),
+                        shape = RoundedCornerShape(20.dp),
                         elevation = CardDefaults.cardElevation(2.dp),
                         colors = CardDefaults.cardColors(containerColor = WarnaCard)
                     ) {
@@ -446,7 +414,7 @@ fun HalamanHistory(
                         }
                     }
                 }
-                Spacer(modifier = Modifier.height(8.dp))
+                Spacer(modifier = Modifier.height(16.dp))
             }
         }
     }

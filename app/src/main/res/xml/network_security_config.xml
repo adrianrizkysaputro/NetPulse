@@ -1,6 +1,7 @@
 <?xml version="1.0" encoding="utf-8"?>
 <network-security-config>
-    <domain-config cleartextTrafficPermitted="true">
-        <domain includeSubdomains="true">192.168.1.5</domain>
-    </domain-config>
+    <!-- Server monitoring berjalan di jaringan lokal lewat HTTP.
+         Diizinkan untuk semua alamat supaya IP server bisa diganti dari Settings
+         (mis. saat demo di jaringan lain). Untuk produksi sebaiknya pakai HTTPS. -->
+    <base-config cleartextTrafficPermitted="true" />
 </network-security-config>

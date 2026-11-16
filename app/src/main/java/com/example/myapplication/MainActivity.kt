@@ -7,6 +7,7 @@ import android.os.Build
 import android.os.Bundle
 import androidx.activity.ComponentActivity
 import androidx.activity.compose.setContent
+import androidx.activity.enableEdgeToEdge
 import androidx.compose.animation.AnimatedContent
 import androidx.compose.animation.core.FastOutSlowInEasing
 import androidx.compose.animation.core.animateDpAsState
@@ -58,6 +59,7 @@ class MainActivity : ComponentActivity() {
     @OptIn(ExperimentalMaterialApi::class)
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
+        enableEdgeToEdge()
 
         if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.TIRAMISU) {
             if (ContextCompat.checkSelfPermission(
@@ -114,6 +116,7 @@ class MainActivity : ComponentActivity() {
                     var selectedDevice by remember { mutableStateOf<Perangkat?>(null) }
                     var diagnosisJaringan by remember { mutableStateOf(listOf<DiagnosisResponse>()) }
                     var searchQuery by remember { mutableStateOf("") }
+                    var detailDeviceAktif by remember { mutableStateOf(false) }
 
                     // Fungsi fetch dari server
                     suspend fun fetchDevices() {
@@ -239,22 +242,23 @@ class MainActivity : ComponentActivity() {
                             }
                         }
 
-                        // Ikon status bar: gelap hanya di tab History (belum bergradient)
+                        // Ikon status bar putih di semua tab (semua tab sudah pakai bar biru)
                         val view = LocalView.current
                         SideEffect {
                             val window = (view.context as? Activity)?.window
                             if (window != null) {
-                                WindowCompat.getInsetsController(window, view).isAppearanceLightStatusBars = (selectedTab == 2)
+                                WindowCompat.getInsetsController(window, view).isAppearanceLightStatusBars = false
                             }
                         }
 
-                        // Tinggi bar biru per tab (di bawah status bar). History = 0 (belum bergradient)
+                        // Tinggi bar biru per tab (di bawah status bar)
                         val tinggiStatusBar = WindowInsets.statusBars.asPaddingValues().calculateTopPadding()
                         val targetTinggiBar = when (selectedTab) {
                             0 -> 200.dp + tinggiStatusBar   // Dashboard
-                            1 -> 108.dp + tinggiStatusBar   // Device
+                            1 -> (if (detailDeviceAktif) 170.dp else 108.dp) + tinggiStatusBar   // Device (lebih tinggi di halaman detail)
+                            2 -> 108.dp + tinggiStatusBar   // History
                             3 -> 216.dp + tinggiStatusBar   // Settings
-                            else -> 0.dp                    // History
+                            else -> 0.dp
                         }
                         val tinggiBar by animateDpAsState(
                             targetValue = targetTinggiBar,
@@ -303,12 +307,14 @@ class MainActivity : ComponentActivity() {
                                         searchQuery = searchQuery,
                                         onSearchQueryChange = { searchQuery = it },
                                         paddingValues = paddingValues,
-                                        onFetchDevices = { fetchDevices() }
+                                        onFetchDevices = { fetchDevices() },
+                                        onDetailAktif = { detailDeviceAktif = it }
                                     )
                                     2 -> HalamanHistory(
                                         logAktivitas = logAktivitas,
                                         paddingValues = paddingValues,
-                                        onFetchDevices = { fetchDevices() }
+                                        onFetchDevices = { fetchDevices() },
+                                        onKeDashboard = { selectedTab = 0 }
                                     )
                                     3 -> HalamanSettings(
                                         fcmToken = fcmToken,

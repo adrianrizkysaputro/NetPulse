@@ -182,96 +182,82 @@ fun HalamanSettings(
 
     if (showUrlDialog) {
         var tempUrl by remember { mutableStateOf(serverUrl) }
-        AlertDialog(
-            onDismissRequest = { showUrlDialog = false },
-            title = { Text("URL Server", fontSize = 18.sp, fontWeight = FontWeight.Bold) },
-            text = {
-                Column {
-                    Text("Alamat server untuk sinkronisasi data.", fontSize = 13.sp, color = WarnaTeksDim)
-                    Spacer(modifier = Modifier.height(12.dp))
-                    OutlinedTextField(
-                        value = tempUrl,
-                        onValueChange = { tempUrl = it },
-                        placeholder = { Text("http://192.168.1.5:8000/") },
-                        shape = RoundedCornerShape(12.dp),
-                        singleLine = true
-                    )
-                }
-            },
-            confirmButton = {
-                TextButton(onClick = {
-                    AppPrefs.setServerUrl(context, tempUrl)
-                    RetrofitClient.BASE_URL = tempUrl
-                    serverUrl = tempUrl
-                    showUrlDialog = false
-                    Toast.makeText(context, "✅ URL disimpan", Toast.LENGTH_SHORT).show()
-                }) { Text("Simpan", fontWeight = FontWeight.Bold) }
-            },
-            dismissButton = {
-                TextButton(onClick = { showUrlDialog = false }) { Text("Batal") }
+        DialogNetPulse(
+            onDismiss = { showUrlDialog = false },
+            icon = Icons.Default.Dns,
+            judul = "URL Server",
+            deskripsi = "Alamat server untuk sinkronisasi data.",
+            teksAksi = "Simpan",
+            onAksi = {
+                AppPrefs.setServerUrl(context, tempUrl)
+                RetrofitClient.BASE_URL = tempUrl
+                serverUrl = tempUrl
+                showUrlDialog = false
+                Toast.makeText(context, "✅ URL disimpan", Toast.LENGTH_SHORT).show()
             }
-        )
+        ) {
+            FieldNetPulse(value = tempUrl, onValueChange = { tempUrl = it }, label = "URL Server", placeholder = "http://192.168.1.5:8000/")
+        }
     }
 
     if (showIntervalDialog) {
-        AlertDialog(
-            onDismissRequest = { showIntervalDialog = false },
-            title = { Text("Interval Scan", fontSize = 18.sp, fontWeight = FontWeight.Bold) },
-            text = {
-                Column {
-                    listOf(30 to "30 detik", 60 to "1 menit", 300 to "5 menit", 600 to "10 menit").forEach { (v, l) ->
-                        Row(
-                            modifier = Modifier
-                                .fillMaxWidth()
-                                .clickable {
-                                    intervalScan = v
-                                    AppPrefs.setIntervalScan(context, v)
-                                    showIntervalDialog = false
-                                    Toast.makeText(context, "✅ Interval diubah", Toast.LENGTH_SHORT).show()
-                                }
-                                .padding(vertical = 12.dp),
-                            verticalAlignment = Alignment.CenterVertically
-                        ) {
-                            RadioButton(selected = intervalScan == v, onClick = null)
-                            Spacer(modifier = Modifier.width(8.dp))
-                            Text(l)
+        DialogNetPulse(
+            onDismiss = { showIntervalDialog = false },
+            icon = Icons.Default.Speed,
+            judul = "Interval Scan",
+            deskripsi = "Seberapa sering NetPulse mengecek jaringan.",
+            warna = Color(0xFF8B5CF6)
+        ) {
+            listOf(30 to "30 detik", 60 to "1 menit", 300 to "5 menit", 600 to "10 menit").forEach { (v, l) ->
+                val dipilih = intervalScan == v
+                Row(
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .padding(vertical = 3.dp)
+                        .clip(RoundedCornerShape(14.dp))
+                        .background(if (dipilih) WarnaBrand.copy(alpha = 0.1f) else WarnaBg)
+                        .clickable {
+                            intervalScan = v
+                            AppPrefs.setIntervalScan(context, v)
+                            showIntervalDialog = false
+                            Toast.makeText(context, "✅ Interval diubah", Toast.LENGTH_SHORT).show()
                         }
+                        .padding(horizontal = 14.dp, vertical = 12.dp),
+                    verticalAlignment = Alignment.CenterVertically
+                ) {
+                    Text(
+                        text = l,
+                        modifier = Modifier.weight(1f),
+                        fontSize = 14.sp,
+                        fontWeight = if (dipilih) FontWeight.Bold else FontWeight.Medium,
+                        color = if (dipilih) WarnaBrand else WarnaTeksUtama
+                    )
+                    if (dipilih) {
+                        Icon(Icons.Default.CheckCircle, contentDescription = null, tint = WarnaBrand, modifier = Modifier.size(20.dp))
                     }
                 }
-            },
-            confirmButton = {},
-            dismissButton = {
-                TextButton(onClick = { showIntervalDialog = false }) { Text("Batal") }
             }
-        )
+        }
     }
 
     if (showProfileDialog) {
         var tempNama by remember { mutableStateOf(namaPengguna) }
-        AlertDialog(
-            onDismissRequest = { showProfileDialog = false },
-            title = { Text("Profil", fontSize = 18.sp, fontWeight = FontWeight.Bold) },
-            text = {
-                OutlinedTextField(
-                    value = tempNama,
-                    onValueChange = { tempNama = it },
-                    label = { Text("Nama Tampilan") },
-                    shape = RoundedCornerShape(12.dp),
-                    singleLine = true
-                )
-            },
-            confirmButton = {
-                TextButton(onClick = {
-                    AppPrefs.setNamaPengguna(context, tempNama)
-                    namaPengguna = tempNama
-                    showProfileDialog = false
-                    Toast.makeText(context, "✅ Profil diperbarui", Toast.LENGTH_SHORT).show()
-                }) { Text("Simpan", fontWeight = FontWeight.Bold) }
-            },
-            dismissButton = {
-                TextButton(onClick = { showProfileDialog = false }) { Text("Batal") }
+        DialogNetPulse(
+            onDismiss = { showProfileDialog = false },
+            icon = Icons.Default.Person,
+            judul = "Profil",
+            deskripsi = "Nama ini tampil di sapaan Dashboard.",
+            warna = Color(0xFF06B6D4),
+            teksAksi = "Simpan",
+            onAksi = {
+                AppPrefs.setNamaPengguna(context, tempNama)
+                namaPengguna = tempNama
+                showProfileDialog = false
+                Toast.makeText(context, "✅ Profil diperbarui", Toast.LENGTH_SHORT).show()
             }
-        )
+        ) {
+            FieldNetPulse(value = tempNama, onValueChange = { tempNama = it }, label = "Nama Tampilan")
+        }
     }
 
     if (showPasswordDialog) {
@@ -280,57 +266,69 @@ fun HalamanSettings(
         var pKonfirm by remember { mutableStateOf("") }
         var error by remember { mutableStateOf("") }
 
-        AlertDialog(
-            onDismissRequest = { showPasswordDialog = false },
-            title = { Text("Ganti Password", fontSize = 18.sp, fontWeight = FontWeight.Bold) },
-            text = {
-                Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
-                    OutlinedTextField(value = pLama, onValueChange = { pLama = it }, label = { Text("Password Lama") }, visualTransformation = androidx.compose.ui.text.input.PasswordVisualTransformation(), shape = RoundedCornerShape(12.dp))
-                    OutlinedTextField(value = pBaru, onValueChange = { pBaru = it }, label = { Text("Password Baru") }, visualTransformation = androidx.compose.ui.text.input.PasswordVisualTransformation(), shape = RoundedCornerShape(12.dp))
-                    OutlinedTextField(value = pKonfirm, onValueChange = { pKonfirm = it }, label = { Text("Konfirmasi") }, visualTransformation = androidx.compose.ui.text.input.PasswordVisualTransformation(), shape = RoundedCornerShape(12.dp))
-                    if (error.isNotEmpty()) Text(error, color = WarnaMerah, fontSize = 12.sp)
-                }
-            },
-            confirmButton = {
-                TextButton(onClick = {
-                    val activeUser = AppPrefs.getActiveUsername(context)
-                    error = when {
-                        pLama != AppPrefs.getPassword(context, activeUser) -> "Password lama salah"
-                        pBaru.length < 6 -> "Minimal 6 karakter"
-                        pBaru != pKonfirm -> "Password tidak cocok"
-                        else -> {
-                            AppPrefs.gantiPassword(context, activeUser, pBaru)
-                            showPasswordDialog = false
-                            Toast.makeText(context, "✅ Password diganti", Toast.LENGTH_SHORT).show()
-                            ""
-                        }
+        DialogNetPulse(
+            onDismiss = { showPasswordDialog = false },
+            icon = Icons.Default.Lock,
+            judul = "Ganti Password",
+            deskripsi = "Gunakan minimal 6 karakter.",
+            warna = Color(0xFFF59E0B),
+            teksAksi = "Ganti",
+            onAksi = {
+                val activeUser = AppPrefs.getActiveUsername(context)
+                error = when {
+                    pLama != AppPrefs.getPassword(context, activeUser) -> "Password lama salah"
+                    pBaru.length < 6 -> "Minimal 6 karakter"
+                    pBaru != pKonfirm -> "Password tidak cocok"
+                    else -> {
+                        AppPrefs.gantiPassword(context, activeUser, pBaru)
+                        showPasswordDialog = false
+                        Toast.makeText(context, "✅ Password diganti", Toast.LENGTH_SHORT).show()
+                        ""
                     }
-                }) { Text("Ganti", fontWeight = FontWeight.Bold) }
-            },
-            dismissButton = {
-                TextButton(onClick = { showPasswordDialog = false }) { Text("Batal") }
+                }
             }
-        )
+        ) {
+            FieldNetPulse(value = pLama, onValueChange = { pLama = it }, label = "Password Lama", password = true)
+            Spacer(modifier = Modifier.height(8.dp))
+            FieldNetPulse(value = pBaru, onValueChange = { pBaru = it }, label = "Password Baru", password = true)
+            Spacer(modifier = Modifier.height(8.dp))
+            FieldNetPulse(value = pKonfirm, onValueChange = { pKonfirm = it }, label = "Konfirmasi", password = true)
+            if (error.isNotEmpty()) {
+                Spacer(modifier = Modifier.height(8.dp))
+                Text(error, color = WarnaMerah, fontSize = 12.sp, fontWeight = FontWeight.Medium)
+            }
+        }
     }
 
     if (showAboutDialog) {
-        AlertDialog(
-            onDismissRequest = { showAboutDialog = false },
-            title = { Text("NetPulse", fontWeight = FontWeight.Bold) },
-            text = {
-                Column {
-                    Text("Versi 1.0.0", fontWeight = FontWeight.Bold)
-                    Spacer(modifier = Modifier.height(4.dp))
-                    Text("Network & IoT Monitoring System", fontSize = 13.sp, color = WarnaTeksDim)
-                    Spacer(modifier = Modifier.height(12.dp))
-                    Text("Developer : Adrian", fontSize = 13.sp)
-                    Text("Institusi : Unpam Serang", fontSize = 13.sp)
-                }
-            },
-            confirmButton = {
-                TextButton(onClick = { showAboutDialog = false }) { Text("Tutup") }
+        DialogNetPulse(
+            onDismiss = { showAboutDialog = false },
+            icon = Icons.Default.MonitorHeart,
+            judul = "NetPulse",
+            deskripsi = "Network & IoT Monitoring System",
+            teksBatal = "Tutup"
+        ) {
+            Column(
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .clip(RoundedCornerShape(14.dp))
+                    .background(WarnaBg)
+                    .padding(14.dp),
+                verticalArrangement = Arrangement.spacedBy(6.dp)
+            ) {
+                BarisAbout("Versi", "1.0.0")
+                BarisAbout("Developer", "Adrian")
+                BarisAbout("Institusi", "Unpam Serang")
             }
-        )
+        }
+    }
+}
+
+@Composable
+private fun BarisAbout(label: String, nilai: String) {
+    Row(modifier = Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.SpaceBetween) {
+        Text(label, fontSize = 13.sp, color = WarnaTeksDim)
+        Text(nilai, fontSize = 13.sp, fontWeight = FontWeight.Bold, color = WarnaTeksUtama)
     }
 }
 
