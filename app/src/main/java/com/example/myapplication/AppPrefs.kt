@@ -46,11 +46,18 @@ object AppPrefs {
     fun akuuAdaUsername(context: Context, username: String): Boolean =
         get(context).contains("akun_${username}_password")
 
-    fun getNamaPengguna(context: Context): String =
-        getActiveUsername(context).ifEmpty { "Pengguna" }
+    // Nama tampilan disimpan TERPISAH dari username, supaya mengganti nama
+    // tidak mengubah akun yang dipakai untuk login dan permintaan ke server.
+    fun getNamaPengguna(context: Context): String {
+        val username = getActiveUsername(context)
+        val tersimpan = get(context).getString("nama_tampilan_$username", null)
+        return if (!tersimpan.isNullOrBlank()) tersimpan else username.ifEmpty { "Pengguna" }
+    }
 
     fun setNamaPengguna(context: Context, nama: String) =
-        get(context).edit().putString("active_username", nama).apply()
+        get(context).edit()
+            .putString("nama_tampilan_${getActiveUsername(context)}", nama.trim())
+            .apply()
 
     fun gantiPassword(context: Context, username: String, passwordBaru: String) =
         simpanAkun(context, username, passwordBaru)
